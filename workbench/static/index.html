@@ -1,0 +1,1321 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>标书工作台</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#fff; --soft:#fafbfc; --line:#e4e7eb; --line2:#d3d8de;
+    --ink:#141a21; --ink2:#5a6572; --ink3:#8b95a1;
+    --acc:#1f5fd8; --acc-soft:#eaf0fd;
+    --ok:#0f7a52; --ok-soft:#e7f5ee;
+    --warn:#9a6206; --warn-soft:#fdf3e2;
+    --bad:#b4232a; --bad-soft:#fdeceb;
+    --mono:ui-monospace,SFMono-Regular,"Cascadia Mono",Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  button{font:inherit}
+  code{font-family:var(--mono);font-size:12.4px;background:#eef1f5;padding:1px 5px;border-radius:4px;border:1px solid #e3e8ee}
+
+  /* 运行队列 */
+  #queue{margin:14px 0 4px;padding:10px 12px;background:#fff;border:1px solid var(--line);border-radius:10px}
+  .q-head{font-size:12.2px;color:var(--ink3);margin-bottom:8px}
+  .q-item{display:grid;grid-template-columns:minmax(180px,1fr) 110px 46px 160px;gap:10px;align-items:center;padding:5px 0;cursor:pointer;font-size:12.4px}
+  .q-item:hover .q-name{color:var(--acc)}
+  .q-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .q-state{color:var(--ink2);font-size:11.8px}
+  .q-state.queued{color:var(--ink3)}
+  .q-num{color:var(--ink3);font-family:var(--mono);font-size:11.4px;text-align:right}
+  .q-bar{height:5px;background:#eef1f5;border-radius:99px;overflow:hidden}
+  .q-bar i{display:block;height:100%;background:var(--acc);border-radius:99px;transition:width .4s ease}
+
+  /* header */
+  header{height:52px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 18px;position:sticky;top:0;z-index:30}
+  .logo{font-weight:680;font-size:15px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px}
+  .logo i{width:9px;height:9px;border-radius:2px;background:var(--acc);display:block}
+  .svc{display:flex;gap:6px;margin-left:8px}
+  .svc span{display:inline-flex;align-items:center;gap:5px;font-size:11.6px;color:var(--ink3);padding:2px 8px;border:1px solid var(--line);border-radius:999px;background:var(--soft)}
+  .svc b{width:6px;height:6px;border-radius:50%;background:#c9cfd6}
+  .svc span.on{color:var(--ok);border-color:#cbe8d9;background:var(--ok-soft)}
+  .svc span.on b{background:var(--ok)}
+  .grow{flex:1}
+  .btn{font-size:13px;padding:7px 14px;border-radius:8px;border:1px solid var(--line2);background:#fff;color:var(--ink);cursor:pointer;transition:.15s;white-space:nowrap}
+  .btn:hover{border-color:var(--acc);color:var(--acc)}
+  .btn.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  .btn.primary:hover{background:#1a52bd;color:#fff}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.sm{padding:4px 10px;font-size:12.4px;border-radius:6px}
+
+  /* layout */
+  .shell{display:grid;grid-template-columns:264px minmax(0,1fr);height:calc(100vh - 52px)}
+  aside{background:#fff;border-right:1px solid var(--line);overflow-y:auto;padding:14px 10px 40px}
+  .aside-h{font-size:11.5px;letter-spacing:.06em;color:var(--ink3);padding:0 8px 8px;text-transform:uppercase}
+  .run-item{padding:9px 10px;border-radius:8px;cursor:pointer;border:1px solid transparent;margin-bottom:2px}
+  .run-item:hover{background:var(--soft)}
+  .run-item.on{background:var(--acc-soft);border-color:#cfdcfa}
+  .run-item .t{font-size:13px;font-weight:600;line-height:1.35;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .run-item .m{font-size:11.8px;color:var(--ink3);margin-top:2px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .tag{font-size:11px;padding:1px 6px;border-radius:4px;background:#eef1f5;color:var(--ink2)}
+  .tag.ok{background:var(--ok-soft);color:var(--ok)}
+  .tag.warn{background:var(--warn-soft);color:var(--warn)}
+  .tag.bad{background:var(--bad-soft);color:var(--bad)}
+  .tag.bench{background:var(--acc-soft);color:var(--acc)}
+
+  main{overflow-y:auto;padding:0}
+  .head{padding:16px 22px 0;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  .head h2{margin:0;font-size:17px;font-weight:660;letter-spacing:-.01em}
+  .head .sub{font-size:12.5px;color:var(--ink3);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .head-row{display:flex;align-items:flex-start;gap:12px}
+  .head-row .acts{margin-left:auto;display:flex;gap:8px}
+
+  /* stepper */
+  .stepper{display:flex;gap:0;padding:14px 22px 12px;overflow-x:auto}
+  .step{display:flex;align-items:center;gap:8px;padding-right:6px;flex:0 0 auto}
+  .step .dot{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11.5px;font-weight:700;border:1.5px solid var(--line2);color:var(--ink3);background:#fff;flex:0 0 auto}
+  .step .lbl{font-size:12.6px;color:var(--ink2);white-space:nowrap}
+  .step .bar{width:26px;height:1.5px;background:var(--line2);margin:0 8px 0 2px}
+  .step.done .dot{background:var(--ok-soft);border-color:#b9e2cd;color:var(--ok)}
+  .step.running .dot{border-color:var(--acc);color:var(--acc);background:var(--acc-soft);animation:pulse 1.4s ease-in-out infinite}
+  .step.failed .dot{background:var(--bad-soft);border-color:#f0c2c4;color:var(--bad)}
+  .step.done .lbl,.step.running .lbl{color:var(--ink);font-weight:600}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(31,95,216,.28)}50%{box-shadow:0 0 0 5px rgba(31,95,216,0)}}
+
+  /* tabs */
+  .tabs{display:flex;gap:2px;padding:0 22px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+  .tabs button{background:none;border:0;padding:10px 14px;font-size:13.4px;color:var(--ink2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tabs button[aria-selected="true"]{color:var(--acc);border-bottom-color:var(--acc);font-weight:640}
+  .tabs .n{font-size:11.5px;opacity:.65;margin-left:4px}
+
+  .body{padding:16px 22px 60px}
+
+  /* stats */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px;margin-bottom:14px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+  .stat .k{font-size:11.5px;color:var(--ink3)}
+  .stat .v{font-size:21px;font-weight:660;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .stat .m{font-size:11.4px;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .stat.risk{border-color:#f0c2c4;background:#fffafa}
+  .stat.risk .v{color:var(--bad)}
+
+  /* risk strip */
+  .risk{background:#fff;border:1px solid #f0c2c4;border-radius:11px;padding:12px 14px 10px;margin-bottom:14px}
+  .risk-head{display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
+  .risk-head h3{margin:0;font-size:13.6px;font-weight:680}
+  .risk-head .n{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--bad);line-height:1}
+  .risk-head .d{font-size:12px;color:var(--ink3)}
+  .risk-head .acts{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .risk-list{display:grid;gap:1px;min-width:0}
+  .risk-item{display:flex;gap:9px;align-items:baseline;text-align:left;background:none;border:0;padding:6px 8px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--ink);width:100%;min-width:0;max-width:100%}
+  .risk-item:hover{background:var(--bad-soft)}
+  .risk-item .rid{font-family:var(--mono);font-size:11.4px;color:var(--bad);flex:0 0 auto}
+  .risk-item .rtext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+  .risk-item .go{color:var(--ink3);font-size:11.6px;flex:0 0 auto}
+
+  /* toolbar */
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  .toolbar input[type=search]{font:inherit;font-size:13px;padding:7px 11px;border:1px solid var(--line2);border-radius:8px;min-width:220px;flex:1;max-width:340px;background:#fff}
+  .toolbar input[type=search]:focus{outline:2px solid var(--acc-soft);border-color:var(--acc)}
+  .chip{font-size:12.4px;padding:4px 10px;border-radius:999px;border:1px solid var(--line2);background:#fff;color:var(--ink2);cursor:pointer}
+  .chip[aria-pressed=true]{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  .chip.risk[aria-pressed=true]{background:var(--bad);border-color:var(--bad)}
+  .count{margin-left:auto;font-size:12.4px;color:var(--ink3);font-variant-numeric:tabular-nums}
+
+  /* ledger */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow:hidden;overflow-x:auto}
+  table.led{min-width:940px}
+  table.led{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+  table.led thead th{background:var(--soft);text-align:left;font-size:12.2px;font-weight:640;color:var(--ink2);padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+  table.led td{padding:8px 11px;border-bottom:1px solid #eff1f4;vertical-align:top;line-height:1.55}
+  table.led tbody tr.row{cursor:pointer}
+  table.led tbody tr.row:hover{background:#f8fafd}
+  table.led tbody tr.open{background:#f7f9fd}
+  .c-id{width:86px;font-family:var(--mono);font-size:11.8px;color:var(--ink2);white-space:nowrap}
+  .pgno{display:block;font-size:10.6px;color:var(--ink3);letter-spacing:.02em}
+  .c-type{width:70px}
+  .c-str{width:104px}
+  .c-resp{width:74px}
+  .c-act{width:118px}
+  .quote{margin-top:3px;font-size:12px;color:var(--ink3);border-left:2px solid #e2e6eb;padding-left:8px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .quote b{font-weight:600;color:var(--ink3);margin-right:4px}
+  .pill{display:inline-block;font-size:11.2px;padding:1px 7px;border-radius:5px;background:#eef1f5;color:var(--ink2);white-space:nowrap}
+  .pill.must{background:var(--bad-soft);color:var(--bad)}
+  .pill.should{background:var(--warn-soft);color:var(--warn)}
+  .pill.t1{background:#e9efff;color:#1f4fc4}.pill.t2{background:#e5f6f2;color:#0d7a63}
+  .pill.t3{background:#f0ecfd;color:#5b3fbe}.pill.t4{background:#eef1f5;color:#4a5563}
+  .pill.t5{background:#fdf1e0;color:#9a6206}.pill.t6{background:#f2f4f7;color:#66707c}
+  .pill.r1{background:#fdeceb;color:#b4232a}.pill.r2{background:#eef4ff;color:#1f5fd8}
+  .pill.r3{background:#e7f5ee;color:#0f7a52}.pill.r4{background:#f2f4f7;color:#4a5563}
+  .bid-pick{display:flex;gap:10px;align-items:center;margin-bottom:12px;font-size:12.5px;color:var(--ink3);flex-wrap:wrap}
+  .bid-pick select{font-size:12.6px;padding:5px 8px;border:1px solid var(--line2);border-radius:8px;background:#fff;max-width:320px}
+  .mx-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px;max-height:68vh;background:#fff}
+  .mx{border-collapse:separate;border-spacing:0;width:100%;font-size:12.4px}
+  .mx th{position:sticky;top:0;background:#f7f9fc;z-index:2;text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .mx td{padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  .mx .mx-req{position:sticky;left:0;background:#fff;min-width:300px;max-width:420px;z-index:1;line-height:1.5}
+  .mx tbody tr:hover td{background:#fafbfd}
+  .mx-none{color:var(--ink3)}
+  .mx-page{color:var(--ink3);font-size:11px;margin-left:6px}
+  .mx-bid{font-weight:600;font-size:12.2px;white-space:normal}
+  .mx-sum{font-weight:400;color:var(--ink3);font-size:11px;margin-top:2px}
+  .pill.cv-ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.cv-warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.cv-bad{background:var(--bad-soft);color:var(--bad)}
+  .pill.cv-none{background:#eef1f5;color:var(--ink3)}
+  .pill.cv-dev{background:#fde7e7;color:#b91c1c;font-weight:700}
+  .pill.cv-hold{background:#fff4e0;color:#b45309;font-weight:700}
+  .basis{font-size:11.6px;color:#b45309;margin-top:3px;line-height:1.5}
+  .voteline{display:block;font-size:10.4px;color:var(--ink3);margin-top:2px;white-space:nowrap}
+  .voteline.conflict{color:#b45309;font-weight:600}
+  tr.row-hold{background:#fffbf2}
+  .mini-sel{font:inherit;font-size:11.8px;padding:3px 5px;border:1px solid #d9c9a8;border-radius:6px;background:#fff;color:#7a5a12}
+  .match-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .match-gate{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;padding:8px 12px;border-radius:9px;font-size:12.5px;margin-bottom:12px;border:1px solid var(--line)}
+  .match-gate.ok{background:var(--ok-soft);border-color:#cbe8d9;color:var(--ok)}
+  .match-gate.warn{background:var(--warn-soft);border-color:#f0dcbc;color:#b45309}
+  .match-gate .m{color:inherit;opacity:.85}
+  .match-gate ul{flex-basis:100%;margin:2px 0 0;padding-left:18px}
+  .match-gate li{margin:1px 0}
+  .match-head .hint{font-size:12.4px;color:var(--ink3)}
+  .match-tools{display:flex;gap:12px;align-items:center;margin:0 0 10px}
+  .match-tools .hint{font-size:12px;color:var(--ink3)}
+  .risk-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--bad);margin-right:6px;vertical-align:1px}
+  select.st{font:inherit;font-size:12px;padding:2px 6px;border-radius:6px;border:1px solid var(--line2);background:#fff;color:var(--ink2);max-width:110px}
+  select.st.done{background:var(--ok-soft);border-color:#cbe8d9;color:var(--ok);font-weight:600}
+  select.st.reject{background:var(--bad-soft);border-color:#f0c2c4;color:var(--bad);font-weight:600}
+  select.st.pending{background:var(--warn-soft);border-color:#f0dcbc;color:var(--warn)}
+
+  /* detail row */
+  tr.exp td{background:#fbfcfe;border-bottom:1px solid var(--line);padding:12px 14px}
+  .detail{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px 20px;font-size:12.5px}
+  .detail > div{min-width:0;overflow-wrap:anywhere}
+  .detail .k{color:var(--ink3);font-size:11.3px;display:block}
+  .detail .full{grid-column:1/-1;white-space:pre-wrap;line-height:1.75;font-size:13px}
+  .detail .full .lab{display:block;color:var(--ink3);font-size:11.3px;margin-bottom:2px}
+
+  /* pager */
+  .pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;padding:10px 2px 0;font-size:12.5px;color:var(--ink3)}
+  .pager .pg{font-variant-numeric:tabular-nums}
+
+  /* gate / validate */
+  .gate-stage{border:1px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden;background:#fff}
+  .gate-stage .h{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--soft);border-bottom:1px solid var(--line);font-size:13px}
+  .gate-stage .h b{font-family:var(--mono)}
+  .gate-stage ul{margin:0;padding:8px 14px 12px 14px;list-style:none}
+  .gate-stage li{font-size:12.6px;padding:4px 0;border-bottom:1px dashed #eef0f3;display:flex;gap:10px}
+  .gate-stage li:last-child{border-bottom:0}
+  .gate-stage li .r{font-family:var(--mono);font-size:11.8px;color:var(--ink2);flex:0 0 auto}
+  .gate-stage li .d{color:var(--ink3)}
+  .kv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 24px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .kv{font-size:12.6px}
+  .kv .k{color:var(--ink3);font-size:11.4px;display:block}
+  .kv .v{word-break:break-word}
+
+  /* log */
+  .console{background:#0f1620;border-radius:11px;padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.65;color:#c8d3e0;height:calc(100vh - 300px);overflow:auto;white-space:pre-wrap;word-break:break-all}
+  .console .k{color:#6ea8ff}
+  .console .err{color:#ff8b8b}
+  .console .ok{color:#6ddba0}
+
+  /* modal */
+  .mask{position:fixed;inset:0;background:rgba(16,24,40,.42);display:grid;place-items:center;z-index:60;padding:20px}
+  .mask[hidden]{display:none}
+  .modal{background:#fff;border-radius:14px;width:min(560px,100%);box-shadow:0 24px 64px rgba(16,24,40,.24);overflow:hidden}
+  .modal h3{margin:0;padding:16px 20px;font-size:15px;border-bottom:1px solid var(--line)}
+  .modal .body{padding:16px 20px}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12.4px;color:var(--ink2);margin-bottom:5px}
+  .field select,.field input{width:100%;font:inherit;font-size:13.4px;padding:8px 10px;border:1px solid var(--line2);border-radius:8px;background:#fff}
+  .upload-row{margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .upload-row input[type=file]{flex:1;font-size:12.4px;padding:6px 8px;border:1px dashed var(--line2);border-radius:8px;background:var(--soft)}
+  .upload-row .hint{font-size:11.6px;color:var(--ink3)}
+  .meta-line{margin-top:8px;font-size:12.2px;line-height:1.5;padding:7px 10px;border-radius:8px;border:1px solid var(--line)}
+  .meta-line.ok{background:var(--ok-soft);border-color:#cbe8d9;color:var(--ok)}
+  .meta-line.bad{background:var(--bad-soft);border-color:#f0c2c4;color:var(--bad)}
+  .meta-line.checking{background:var(--soft);color:var(--ink3)}
+  .radio-row{display:flex;gap:8px}
+  .radio{flex:1;border:1px solid var(--line2);border-radius:9px;padding:9px 12px;cursor:pointer;font-size:12.8px}
+  .radio[aria-pressed=true]{border-color:var(--acc);background:var(--acc-soft);color:var(--acc);font-weight:600}
+  .radio small{display:block;color:var(--ink3);font-weight:400;font-size:11.6px;margin-top:1px}
+  .modal .foot{display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;border-top:1px solid var(--line);background:var(--soft)}
+  .empty{padding:60px;text-align:center;color:var(--ink3)}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#141a21;color:#fff;font-size:13px;padding:9px 16px;border-radius:9px;z-index:80;opacity:0;transition:.2s;pointer-events:none}
+  .toast.on{opacity:1}
+  @media (max-width:900px){.shell{grid-template-columns:1fr}aside{display:none}}
+  /* ---------------- 视觉打磨（覆盖层，放在最后） ---------------- */
+  body{
+    background:
+      radial-gradient(1100px 520px at 12% -8%, #e9f0fb 0%, rgba(233,240,251,0) 62%),
+      radial-gradient(900px 480px at 92% 0%, #eef7f2 0%, rgba(238,247,242,0) 55%),
+      var(--bg);
+    background-attachment:fixed;
+  }
+  header{
+    background:rgba(255,255,255,.82);
+    backdrop-filter:saturate(1.4) blur(10px);
+    box-shadow:0 1px 0 rgba(16,24,40,.05), 0 8px 24px -20px rgba(16,24,40,.35);
+  }
+  .logo i{box-shadow:0 0 0 3px rgba(31,95,216,.12)}
+
+  aside{background:linear-gradient(180deg,#fff 0%,#fcfdff 100%)}
+  .run-item{
+    border-radius:10px;
+    transition:background .15s ease, transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  }
+  .run-item:hover{background:#f7fafe;transform:translateX(1px)}
+  .run-item.on{
+    background:linear-gradient(90deg,#eef4ff 0%,#f7faff 100%);
+    border-color:#d7e3fb;
+    box-shadow:inset 3px 0 0 var(--acc), 0 6px 18px -16px rgba(31,95,216,.8);
+  }
+
+  .tabs{position:relative}
+  .tabs button{position:relative;border-bottom-color:transparent;transition:color .15s ease,border-color .15s ease}
+  .tabs button[aria-selected="true"]::after{
+    content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;
+    background:var(--acc);border-radius:2px 2px 0 0;
+  }
+
+  .stat{
+    border-color:#e8ecf1;
+    box-shadow:0 1px 2px rgba(16,24,40,.03), 0 14px 28px -24px rgba(16,24,40,.55);
+    transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .stat:hover{transform:translateY(-1px);box-shadow:0 1px 2px rgba(16,24,40,.04), 0 18px 34px -24px rgba(16,24,40,.55)}
+  .stat .v{font-size:23px;letter-spacing:-.03em}
+  .stat.risk{background:linear-gradient(180deg,#fffafa 0%,#fff5f5 100%)}
+
+  .card,.risk,.mx-wrap,#queue,.match-gate{
+    box-shadow:0 1px 2px rgba(16,24,40,.03), 0 18px 40px -32px rgba(16,24,40,.6);
+  }
+  .card{border-color:#e8ecf1}
+  table.led thead th{background:linear-gradient(180deg,#f8fafc 0%,#f3f6fa 100%);letter-spacing:.01em}
+  table.led tbody tr.row{transition:background .12s ease}
+  table.led tbody tr.row:hover{background:#f6faff}
+
+  .btn{
+    box-shadow:0 1px 1px rgba(16,24,40,.03);
+    transition:background .15s ease,border-color .15s ease,color .15s ease,transform .08s ease,box-shadow .15s ease;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{box-shadow:0 8px 18px -10px rgba(31,95,216,.75)}
+  .btn.primary:hover{background:#1a52bd;box-shadow:0 10px 22px -10px rgba(31,95,216,.8)}
+  .chip,.mini-sel,.bid-pick select,.toolbar input[type=search]{transition:border-color .15s ease,background .15s ease,box-shadow .15s ease}
+  .chip:hover{border-color:#b9c6d6;background:#fbfcfe}
+  .toolbar input[type=search]:hover{border-color:#c3cdd9}
+
+  .empty{
+    border-radius:12px;
+    background:linear-gradient(180deg,#fcfdff 0%,#f8fafc 100%);
+    border:1px dashed #dde4ec;
+    box-shadow:none;
+  }
+
+  :focus-visible{outline:2px solid #bcd0f7;outline-offset:2px;border-radius:6px}
+  ::selection{background:#dbe7ff}
+
+  *{scrollbar-width:thin;scrollbar-color:#c9d2dd transparent}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#cfd7e2;border-radius:99px;border:2px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-thumb:hover{background:#b9c4d2;background-clip:content-box}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;animation:none !important}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><i></i>标书工作台</div>
+  <div class="svc" id="svc">
+    <span id="svc-api"><b></b>rag-tender API</span>
+    <span id="svc-model"><b></b>模型服务</span>
+    <span id="svc-worker"><b></b>worker</span>
+  </div>
+  <div class="grow"></div>
+  <button class="btn sm" id="btnSvc" hidden>启动服务</button>
+  <button class="btn primary" id="btnNew">＋ 新建运行</button>
+</header>
+
+<div class="shell">
+  <aside>
+    <div class="aside-h">运行记录</div>
+    <div id="arms"></div>
+  </aside>
+
+  <main>
+    <div class="head">
+      <div class="head-row">
+        <div>
+          <h2 id="runTitle">选择一个运行</h2>
+          <div class="sub" id="runSub"></div>
+        </div>
+        <div class="acts">
+          <button class="btn sm" id="btnMatch">标书比对</button>
+          <button class="btn sm primary" id="btnPdf" disabled>导出 PDF 报告</button>
+          <button class="btn sm" id="btnExport" disabled>导出 CSV</button>
+          <button class="btn sm" id="btnRefresh">刷新</button>
+          <input type="file" id="bidFile" accept="application/pdf" multiple hidden>
+        </div>
+      </div>
+      <div id="queue" hidden></div>
+      <div class="stepper" id="stepper"></div>
+    </div>
+
+    <div class="tabs" id="tabs">
+      <button data-tab="ledger" aria-selected="true">台账<span class="n" id="nLedger"></span></button>
+      <button data-tab="match" aria-selected="false">比对</button>
+      <button data-tab="matrix" aria-selected="false">多标对比</button>
+      <button data-tab="gate" aria-selected="false">门禁</button>
+      <button data-tab="validate" aria-selected="false">校验</button>
+      <button data-tab="log" aria-selected="false">日志</button>
+    </div>
+
+    <div class="body">
+      <section id="tab-ledger">
+        <div class="risk" id="riskBox" hidden>
+          <div class="risk-head">
+            <h3>废标风险</h3>
+            <span class="n" id="riskN">0</span>
+            <span class="d">条款含「否决 / 无效 / 不得 / 不接受」，不满足即出局</span>
+            <span class="acts">
+              <button class="btn sm" id="riskOnly">只看这些</button>
+            </span>
+          </div>
+          <div class="risk-list" id="riskList"></div>
+        </div>
+
+        <div class="stats" id="stats"></div>
+        <div class="toolbar">
+          <input type="search" id="q" placeholder="搜索要求 / 引文 / 编号 / 章节…" aria-label="搜索台账">
+          <button class="chip risk" id="riskChip" aria-pressed="false">废标风险</button>
+          <div id="chips"></div>
+          <div id="schips"></div>
+          <span class="count" id="count"></span>
+        </div>
+        <div class="card">
+          <table class="led">
+            <colgroup><col class="c-id"><col class="c-type"><col class="c-str"><col class="c-resp"><col><col class="c-act"></colgroup>
+            <thead><tr><th>编号</th><th>类型</th><th>强度</th><th>响应</th><th>要求 / 原文引证</th><th>复核</th></tr></thead>
+            <tbody id="ledBody"></tbody>
+          </table>
+          <div class="empty" id="ledEmpty" hidden>没有匹配的条目</div>
+        </div>
+        <div class="pager" id="pager"></div>
+      </section>
+
+      <section id="tab-gate" hidden></section>
+      <section id="tab-match" hidden></section>
+      <section id="tab-matrix" hidden></section>
+      <section id="tab-validate" hidden></section>
+      <section id="tab-log" hidden><div class="console" id="console"></div></section>
+    </div>
+  </main>
+</div>
+
+<div class="mask" id="mask" hidden>
+  <div class="modal">
+    <h3>新建运行</h3>
+    <div class="body">
+      <div class="field">
+        <label>招标文件</label>
+        <select id="mFile"></select>
+        <div class="upload-row">
+          <input type="file" id="mUpload" accept="application/pdf" multiple>
+          <span class="hint">选一个本地 PDF，上传后自动出现在上面的下拉里</span>
+        </div>
+        <div id="mMeta" class="meta-line" hidden></div>
+      </div>
+      <div class="field">
+        <label>模型</label>
+        <div class="radio-row" id="mMode">
+          <div class="radio" data-v="stub" aria-pressed="true">确定性替身<small>秒级，用于验证结构</small></div>
+          <div class="radio" data-v="real" aria-pressed="false">DeepSeek-flash<small>83 页约 55 分钟</small></div>
+        </div>
+      </div>
+      <div class="field">
+        <label>运行标签</label>
+        <input id="mLabel" placeholder="留空则用文件名">
+      </div>
+      <div class="field">
+        <label>流水线选项</label>
+        <div class="radio-row">
+          <div class="radio" id="mAudit" aria-pressed="true" style="flex:1">含「审计补漏」阶段<small>逐页追问“还缺哪些条款”，召回更高</small></div>
+          <div class="radio" id="mInject" aria-pressed="false" style="flex:1">含「注入重提取」阶段<small>扫描层已知问题回灌提示词</small></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot">
+      <button class="btn" id="mCancel">取消</button>
+      <button class="btn primary" id="mStart">开始运行</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const api = async (url, opt) => {
+  const res = await fetch(url, opt);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+};
+function toast(msg){
+  const node = $('toast'); node.textContent = msg; node.classList.add('on');
+  clearTimeout(node._t); node._t = setTimeout(() => node.classList.remove('on'), 2200);
+}
+
+const state = {
+  arms: [], docs: [], services: {}, current: null,
+  rows: [], stats: null, job: null, poll: null,
+  q: '', type: '', status: '', risk: false,
+  page: 0, pageSize: 50, expanded: new Set(),
+  matchData: null, matchConflictOnly: false, matchPoll: null,
+  jobs: [], queuePoll: null,
+  metaCheck: null,
+};
+
+/* ---------------- risk model ---------------- */
+const VETO = /否决|废标|无效|不接受|不得|禁止|不予|取消资格|视为|拒绝/;
+// 「不作无效处理」这类句子虽然带「无效」，但表达的是"不受影响"，不算风险
+const VETO_FALSE = /不作无效|不视为无效|不属于无效|并非无效/;
+const isRisk = (row) => {
+  const text = `${row.requirement || ''} ${row.source_quote || ''}`;
+  if (row.strength === '禁止') return true;
+  if (VETO_FALSE.test(text)) return false;
+  return VETO.test(text);
+};
+const isOpen = (row) => row.status !== '已确认' && row.status !== '已驳回';
+const TYPE_RANK = {资格: 0, 格式: 1, 商务: 2, 技术: 3, 评分: 4, 其他: 5};
+
+/* ---------------- boot ---------------- */
+async function loadState(){
+  const data = await api('/api/state');
+  state.arms = data.arms; state.docs = data.documents; state.services = data.services;
+  $('svc-api').classList.toggle('on', data.services.api);
+  $('svc-model').classList.toggle('on', data.services.model);
+  $('svc-worker').classList.toggle('on', data.services.worker);
+  const allOn = data.services.api && data.services.model && data.services.worker;
+  $('btnSvc').hidden = allOn;
+  state.jobs = data.jobs || [];
+  renderArms();
+  renderQueue(state.jobs);
+  renderDocOptions();
+  const wanted = new URLSearchParams(location.search).get('arm');
+  if (!state.current && wanted && data.arms.some(arm => arm.name === wanted)) selectArm(wanted);
+  else if (!state.current && data.arms.length) selectArm(data.arms[0].name);
+}
+
+function startQueuePoll(){
+  if (state.queuePoll) return;
+  state.queuePoll = setInterval(async () => {
+    await loadState();
+    const active = (state.jobs || []).some(job => job.status === 'queued' || job.status === 'running');
+    if (!active) { clearInterval(state.queuePoll); state.queuePoll = null; }
+  }, 3000);
+}
+
+function renderQueue(jobs){
+  const box = $('queue');
+  const active = (jobs || []).filter(job => job.status === 'queued' || job.status === 'running');
+  if (!active.length) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  box.innerHTML = `<div class="q-head">正在审 ${active.length} 份招标文件 · 最多同时 2 条</div>` + active.map(job => {
+    const pct = Math.round((job.stages_done || 0) / Math.max(job.stages_total || 1, 1) * 100);
+    return `<div class="q-item" data-arm="${esc(job.arm)}">
+      <span class="q-name">${esc(job.label || job.arm)}</span>
+      <span class="q-state ${esc(job.status)}">${job.status === 'queued' ? '排队中' : esc(job.current || '运行中')}</span>
+      <span class="q-num">${job.stages_done || 0}/${job.stages_total || 0}</span>
+      <span class="q-bar"><i style="width:${pct}%"></i></span>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.q-item').forEach(node => node.addEventListener('click', () => selectArm(node.dataset.arm)));
+}
+
+function gateChip(arm){
+  if (arm.blockers) return `<span class="tag bad">${arm.blockers} BLOCKER</span>`;
+  if (arm.rule_warns) return `<span class="tag warn">${arm.rule_warns} 规则告警</span>`;
+  return arm.has_gate ? '<span class="tag ok">门禁通过</span>' : '<span class="tag">未门禁</span>';
+}
+
+function renderArms(){
+  const box = $('arms');
+  if (!state.arms.length){ box.innerHTML = '<div class="empty" style="padding:30px 10px">暂无运行</div>'; return; }
+  box.innerHTML = state.arms.map(arm => `
+    <div class="run-item ${arm.name === state.current ? 'on' : ''}" data-arm="${arm.name}">
+      <div class="t">${esc(arm.label)}</div>
+      <div class="m">
+        <span class="tag bench">${arm.requirements} 条</span>
+        ${arm.pages ? `<span>${arm.pages} 页</span>` : ''}
+        ${gateChip(arm)}
+      </div>
+    </div>`).join('');
+  box.querySelectorAll('.run-item').forEach(node => {
+    node.addEventListener('click', () => selectArm(node.dataset.arm));
+  });
+}
+
+function renderDocOptions(){
+  const groups = {};
+  state.docs.forEach(doc => (groups[doc.group] = groups[doc.group] || []).push(doc));
+  $('mFile').innerHTML = Object.entries(groups).map(([group, docs]) =>
+    `<optgroup label="${esc(group)}">` + docs.map(doc =>
+      `<option value="${esc(doc.path)}">${esc(doc.name)} · ${doc.size_mb}MB</option>`).join('') + '</optgroup>'
+  ).join('');
+}
+
+/* ---------------- select arm ---------------- */
+async function selectArm(name){
+  state.current = name;
+  state.q = ''; state.type = ''; state.status = ''; state.risk = false;
+  state.page = 0; state.expanded = new Set();
+  state.matchConflictOnly = false; state.matchData = null;
+  $('q').value = '';
+  renderArms();
+  const detail = await api('/api/arms/' + name);
+  const meta = detail.meta;
+  $('runTitle').textContent = meta.label;
+  $('runSub').innerHTML = [
+    meta.file ? `<span>${esc(meta.file)}</span>` : '',
+    meta.pages ? `<span>${meta.pages} 页</span>` : '',
+    meta.run_id ? `<span>run ${esc(meta.run_id)}</span>` : '',
+    meta.validate_passed === true ? '<span class="tag ok">15 列结构校验 PASS</span>' : '',
+    meta.validate_passed === false ? '<span class="tag bad">结构校验未通过</span>' : '',
+  ].filter(Boolean).join(' · ');
+  $('btnExport').disabled = !meta.requirements;
+  $('btnPdf').disabled = !state.current;
+
+  state.job = detail.job;
+  renderStepper();
+  renderGate(detail.gate);
+  renderValidate(detail.validate);
+  api('/api/arms/' + name + '/match').then(renderMatch).catch(() => {});
+
+  const ledger = await api('/api/arms/' + name + '/ledger');
+  state.rows = ledger.rows; state.stats = ledger.stats;
+  $('nLedger').textContent = ledger.stats.total;
+  renderRisk(); renderStats(); renderChips(); paint();
+  if (state.job && state.job.status === 'running') startPolling(state.job.id);
+  else renderLog(state.job ? state.job.log : []);
+}
+
+/* ---------------- stepper ---------------- */
+const STEP_ORDER = ['extract','scan','inject','map','gate','validate'];
+const STEP_NAME = {extract:'提取',scan:'扫描',audit:'审计补漏',inject:'注入重提',map:'台账化',gate:'门禁',validate:'校验'};
+
+function renderStepper(){
+  const job = state.job;
+  let stages = job ? job.stages : null;
+  if (!stages){
+    const meta = state.arms.find(a => a.name === state.current) || {};
+    stages = STEP_ORDER.filter(k => k !== 'inject').map(key => ({ key, name: STEP_NAME[key], state: 'done' }));
+    if (!meta.has_gate) stages = stages.map(s => s.key === 'validate' ? {...s, state:'pending'} : s);
+  }
+  $('stepper').innerHTML = stages.map((stage, index) => {
+    const num = stage.state === 'done' ? '✓' : (stage.state === 'failed' ? '!' : index + 1);
+    const bar = index < stages.length - 1 ? '<span class="bar"></span>' : '';
+    return `<div class="step ${stage.state}"><span class="dot">${num}</span>
+      <span class="lbl">${esc(STEP_NAME[stage.key] || stage.name)}${stage.progress ? ' · ' + esc(stage.progress) : ''}</span>${bar}</div>`;
+  }).join('');
+}
+
+/* ---------------- risk strip ---------------- */
+function renderRisk(){
+  const hits = state.rows.filter(isRisk);
+  const open = hits.filter(isOpen);
+  const box = $('riskBox');
+  $('riskN').textContent = open.length;
+  $('riskChip').textContent = `废标风险 ${open.length}`;
+  if (!hits.length){ box.hidden = true; return; }
+  box.hidden = false;
+  const sorted = [...open].sort((a, b) =>
+    (a.strength === '禁止' ? 0 : 1) - (b.strength === '禁止' ? 0 : 1) ||
+    (TYPE_RANK[a.type] ?? 9) - (TYPE_RANK[b.type] ?? 9) ||
+    a.req_id.localeCompare(b.req_id)
+  );
+  // 每种类型轮流取一条，避免六条全是「资格」
+  const buckets = {};
+  sorted.forEach(row => (buckets[row.type] = buckets[row.type] || []).push(row));
+  const order = Object.keys(TYPE_RANK).sort((a, b) => TYPE_RANK[a] - TYPE_RANK[b]);
+  const top = [];
+  while (top.length < 6 && order.some(t => (buckets[t] || []).length)) {
+    for (const t of order) {
+      if (top.length >= 6) break;
+      if ((buckets[t] || []).length) top.push(buckets[t].shift());
+    }
+  }
+  $('riskList').innerHTML = top.map(row => `
+    <button class="risk-item" data-id="${esc(row.req_id)}" title="跳到这条">
+      <span class="rid">${esc(row.req_id)}</span>
+      <span class="pill ${typeClass[row.type] || ''}" style="flex:0 0 auto">${esc(row.type)}</span>
+      <span class="rtext">${esc(row.requirement)}</span>
+      <span class="go">查看 →</span>
+    </button>`).join('');
+  $('riskList').querySelectorAll('.risk-item').forEach(node => {
+    node.addEventListener('click', () => {
+      const id = node.dataset.id;
+      state.q = id; $('q').value = id;
+      state.risk = false; state.type = ''; state.status = '';
+      state.expanded.add(id); state.page = 0;
+      renderChips(); paint();
+      const el = document.querySelector(`#ledBody tr[data-id="${id}"]`);
+      if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  });
+}
+
+/* ---------------- stats & chips ---------------- */
+function renderStats(){
+  if (!state.stats) return;
+  const reviewed = state.rows.filter(r => r.status === '已确认' || r.status === '已驳回').length;
+  const risk = state.rows.filter(r => isRisk(r) && isOpen(r)).length;
+  const clarify = state.rows.filter(r => r.need_clarify === 'Y').length;
+  $('stats').innerHTML = [
+    ['台账条目', state.stats.total, '15 列全映射'],
+    ['废标风险', risk, '需逐条确认', 'risk'],
+    ['需复核', state.stats.by_status['需复核'] || 0, '未人工处理'],
+    ['已人工复核', reviewed, '写回 review.json'],
+    ['需澄清', clarify, 'need_clarify = Y'],
+  ].map(([k,v,m,cls]) => `<div class="stat ${cls || ''}"><div class="k">${k}</div><div class="v">${v}</div><div class="m">${m}</div></div>`).join('');
+}
+
+const TYPES = ['商务','技术','资格','格式','评分','其他'];
+const STATUSES = ['需复核','待响应','已确认','已驳回','待补证据'];
+
+function renderChips(){
+  const typeCount = {};
+  state.rows.forEach(r => typeCount[r.type] = (typeCount[r.type] || 0) + 1);
+  $('chips').innerHTML = ['', ...TYPES.filter(t => typeCount[t])].map(t =>
+    `<button class="chip" data-type="${t}" aria-pressed="${state.type === t}">${t || '全部'}${t ? ' ' + typeCount[t] : ''}</button>`
+  ).join('');
+  $('schips').innerHTML = ['', ...STATUSES].map(s =>
+    `<button class="chip" data-status="${s}" aria-pressed="${state.status === s}">${s || '全部状态'}</button>`
+  ).join('');
+  $('riskChip').setAttribute('aria-pressed', String(state.risk));
+  $('chips').querySelectorAll('.chip').forEach(btn => btn.addEventListener('click', () => {
+    state.type = btn.dataset.type; state.page = 0; renderChips(); paint();
+  }));
+  $('schips').querySelectorAll('.chip').forEach(btn => btn.addEventListener('click', () => {
+    state.status = btn.dataset.status; state.page = 0; renderChips(); paint();
+  }));
+}
+
+/* ---------------- ledger ---------------- */
+const strClass = {必须:'must', 应:'should', 禁止:'must', 宜:'', 可:''};
+const typeClass = {商务:'t1',技术:'t2',资格:'t3',格式:'t4',评分:'t5',其他:'t6'};
+const respClass = {响应:'r2', 承诺:'r2', 证明:'r3', 待办:'r1', 人工:'r4'};
+const statusClass = {'已确认':'done','已驳回':'reject','待补证据':'pending','待响应':'pending','需复核':''};
+const norm = (s) => String(s ?? '').replace(/[\s，。：；、""''（）()《》【】,.!:;]/g, '');
+const quoteRedundant = (row) => {
+  const q = norm(row.source_quote), t = norm(row.requirement);
+  return !q || q === t || t.includes(q) || q.includes(t);
+};
+
+function rowHtml(row){
+  const open = state.expanded.has(row.req_id);
+  const dup = quoteRedundant(row);
+  const req = esc(row.requirement);
+  const page = row.page ? `p.${esc(String(row.page))}` : '';
+  const review = row.dup_of
+    ? `<span class="pill" title="与 ${esc(row.dup_of)} 内容重复">重复 → ${esc(row.dup_of)}</span>`
+    : `<select class="st ${statusClass[row.status] || ''}" data-id="${esc(row.req_id)}" aria-label="复核状态">
+        ${STATUSES.map(s => `<option ${s === row.status ? 'selected' : ''}>${s}</option>`).join('')}
+      </select>`;
+  return `<tr class="row ${open ? 'open' : ''}" data-id="${esc(row.req_id)}">
+    <td class="c-id">${isRisk(row) ? '<i class="risk-dot"></i>' : ''}${esc(row.req_id)}${page ? `<span class="pgno">${page}</span>` : ''}</td>
+    <td class="c-type"><span class="pill ${typeClass[row.type] || ''}">${esc(row.type)}</span></td>
+    <td class="c-str"><span class="pill ${strClass[row.strength] || ''}">${esc(row.strength)}</span>
+      <span class="pill">${row.mandatory === 'Y' ? '强制' : '非强制'}</span></td>
+    <td class="c-resp"><span class="pill ${respClass[row.response_type] || ''}">${esc(row.response_type || '—')}</span></td>
+    <td><div>${req}</div>${dup ? '' : `<div class="quote"><b>原文</b>${esc(row.source_quote)}</div>`}</td>
+    <td class="c-act">${review}</td>
+  </tr>` + (open ? `<tr class="exp"><td colspan="6"><div class="detail">
+      <div class="full"><span class="lab">要求全文</span>${req}</div>
+      <div class="full"><span class="lab">原文引证</span>${esc(row.source_quote || '（无）')}</div>
+      <div><span class="k">章节</span>${esc(row.section || '—')}</div>
+      <div><span class="k">位置</span>第 ${esc(String(row.page || '—'))} 页 · 行 ${esc(Number(row.line_no) > 0 ? String(row.line_no) : '—')}</div>
+      <div><span class="k">提取</span>${esc(row.via || '—')} · 置信度 ${esc(row.confidence === '' || row.confidence == null ? '—' : String(row.confidence))}</div>
+      <div><span class="k">响应方式</span>${esc(row.response_type || '—')}</div>
+      <div><span class="k">责任人</span>${esc(row.owner || '—')}</div>
+      <div><span class="k">备注</span>${esc(row.note || '—')}</div>
+    </div></td></tr>` : '');
+}
+
+function paint(){
+  const q = state.q.toLowerCase();
+  const rows = state.rows.filter(row => {
+    if (state.type && row.type !== state.type) return false;
+    if (state.status && row.status !== state.status) return false;
+    if (state.risk && !(isRisk(row) && isOpen(row))) return false;
+    if (!q) return true;
+    return [row.req_id, row.section, row.requirement, row.source_quote, row.owner, row.response_type]
+      .join(' ').toLowerCase().includes(q);
+  });
+
+  const pages = Math.max(1, Math.ceil(rows.length / state.pageSize));
+  if (state.page >= pages) state.page = pages - 1;
+  if (state.page < 0) state.page = 0;
+  const start = state.page * state.pageSize;
+  const view = rows.slice(start, start + state.pageSize);
+
+  $('count').textContent = `显示 ${rows.length} / ${state.rows.length} 条`;
+  $('ledEmpty').hidden = rows.length > 0;
+  $('ledBody').innerHTML = view.map(rowHtml).join('');
+
+  $('ledBody').querySelectorAll('select.st').forEach(sel => {
+    sel.addEventListener('click', ev => ev.stopPropagation());
+    sel.addEventListener('change', async () => {
+      const reqId = sel.dataset.id;
+      sel.className = 'st ' + (statusClass[sel.value] || '');
+      try {
+        const res = await api(`/api/arms/${state.current}/review`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({req_id: reqId, status: sel.value}),
+        });
+        const row = state.rows.find(r => r.req_id === reqId);
+        if (row) { row.status = sel.value; row._review = {status: sel.value}; }
+        renderRisk(); renderStats();
+        toast(`${reqId} → ${sel.value}（已回写，共 ${res.reviewed} 条）`);
+      } catch (err) { toast('回写失败：' + err.message); }
+    });
+  });
+
+  $('ledBody').querySelectorAll('tr.row').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const id = tr.dataset.id;
+      if (state.expanded.has(id)) state.expanded.delete(id); else state.expanded.add(id);
+      paint();
+    });
+  });
+
+  $('pager').innerHTML = rows.length > state.pageSize ? `
+    <span class="pg">第 ${start + 1}–${Math.min(start + state.pageSize, rows.length)} 条 / 共 ${rows.length} 条</span>
+    <button class="btn sm" data-page="prev" ${state.page === 0 ? 'disabled' : ''}>上一页</button>
+    <span class="pg">${state.page + 1} / ${pages}</span>
+    <button class="btn sm" data-page="next" ${state.page >= pages - 1 ? 'disabled' : ''}>下一页</button>` : '';
+  $('pager').querySelectorAll('button[data-page]').forEach(btn => btn.addEventListener('click', () => {
+    state.page += btn.dataset.page === 'next' ? 1 : -1;
+    paint();
+    $('ledBody').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }));
+}
+
+/* ---------------- bid match ---------------- */
+const matchClass = (s) => s === '已响应' ? 'cv-ok'
+  : s === '部分响应' ? 'cv-warn'
+  : s === '负偏离' ? 'cv-dev'
+  : s === '人工介入' ? 'cv-hold'
+  : s === '未响应' ? 'cv-bad'
+  : 'cv-none';
+
+function renderMatch(data){
+  const box = $('tab-match');
+  const st = data && data.state ? data.state.status : '';
+  if (st === 'running'){
+    box.innerHTML = `<div class="empty">正在比对：${esc(data.state.bid || '')} …（双跑投票，约 2 分钟）</div>`;
+    return;
+  }
+  if (data && data.has_result){ renderMatchTable(data); return; }
+  if (st === 'failed'){
+    box.innerHTML = `<div class="empty">比对失败：${esc((data.state && data.state.error) || '未知错误')}</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="empty">
+      <p>还没有比对结果。</p>
+      <p style="font-size:12.6px">上传<strong>我方投标文件</strong>（不是招标文件），系统会把它和台账里的每一条要求逐条对照。</p>
+      <button class="btn primary" id="matchPick">上传投标文件</button>
+    </div>`;
+  $('matchPick').addEventListener('click', () => $('bidFile').click());
+}
+
+const COV_CLASS = {'已响应':'r3','部分响应':'r2','负偏离':'r1','未响应':'r1','未找到':'r4','人工介入':'should'};
+
+async function loadMatrix(){
+  const box = $('tab-matrix');
+  if (!state.current) { box.innerHTML = '<div class="empty">先选择一个运行</div>'; return; }
+  box.innerHTML = '<div class="empty">正在汇总多份标书…</div>';
+  try {
+    renderMatrix(await api(`/api/arms/${encodeURIComponent(state.current)}/matrix`));
+  } catch (err) {
+    box.innerHTML = `<div class="empty">加载失败：${esc(err.message)}</div>`;
+  }
+}
+
+function renderMatrix(data){
+  const box = $('tab-matrix');
+  const bids = data.bids || [];
+  if (!bids.length) {
+    box.innerHTML = `<div class="empty">
+      <p>还没有可对比的投标文件。</p>
+      <p style="font-size:12.6px">先到「比对」页上传投标文件，上传 2 份以上就能在这里横向看差异。</p>
+      <button class="btn primary" id="matrixPick">上传投标文件</button>
+    </div>`;
+    $('matrixPick').addEventListener('click', () => $('bidFile').click());
+    return;
+  }
+  const rows = (data.rows || []).filter(row => Object.values(row.cells || {}).some(Boolean));
+  const head = `<tr><th class="mx-req">要求 / 编号</th>${bids.map(bid => {
+    const cov = bid.coverage || {};
+    return `<th><div class="mx-bid">${esc(bid.name)}</div>
+      <div class="mx-sum">缺 ${bid.missing || 0} · 负偏离 ${cov['负偏离'] || 0} · 待人工 ${cov['人工介入'] || 0}</div></th>`;
+  }).join('')}</tr>`;
+  const body = rows.map(row => {
+    const cells = bids.map(bid => {
+      const cell = (row.cells || {})[bid.slug];
+      if (!cell) return '<td class="mx-none">—</td>';
+      const cls = COV_CLASS[cell.coverage] || '';
+      return `<td><span class="pill ${cls}">${esc(cell.coverage || '')}</span>${cell.page ? `<span class="mx-page">p.${esc(cell.page)}</span>` : ''}</td>`;
+    }).join('');
+    return `<tr><td class="mx-req"><span class="mono" style="color:var(--ink3)">${esc(row.req_id)}</span> ${esc((row.requirement || '').slice(0, 70))}</td>${cells}</tr>`;
+  }).join('');
+  box.innerHTML = `
+    <div class="match-head">
+      <span class="hint">${bids.length} 份投标文件 · ${rows.length} 条要求</span>
+      <button class="btn sm" id="matrixPick">再上传一份</button>
+    </div>
+    <div class="mx-wrap"><table class="mx"><thead>${head}</thead><tbody>${body}</tbody></table></div>
+    <div class="hint" style="margin-top:8px">只列出至少有一份标书给出结论的要求；空白「—」表示该标书没有这一条。</div>`;
+  $('matrixPick').addEventListener('click', () => $('bidFile').click());
+}
+
+function renderMatchTable(data){
+  const box = $('tab-match');
+  state.matchData = data;
+  const s = data.summary;
+  const cov = s.coverage || {};
+  const total = s.requirements || 1;
+  const stat = (k, label) => `<div class="stat"><div class="k">${label}</div><div class="v">${cov[k] || 0}</div><div class="m">${((cov[k] || 0) / total * 100).toFixed(0)}%</div></div>`;
+  const all = data.rows || [];
+  const conflicts = all.filter(row => row.vote_agree === 'N');
+  const visible = state.matchConflictOnly ? conflicts : all;
+  const rows = visible.map(row => {
+    const hold = row.coverage === '人工介入';
+    const confirmCell = hold
+      ? `<select class="mini-sel" data-req="${esc(row.req_id)}">
+           <option value="">待确认…</option>
+           <option value="已响应">确认已响应</option>
+           <option value="部分响应">确认部分响应</option>
+           <option value="未响应">确认未响应</option>
+           <option value="负偏离">确认负偏离</option>
+         </select>`
+      : (row.reviewed === 'Y'
+          ? (row.review_stale === 'Y'
+              ? '<span class="tag warn" title="证据或规则依据已变，建议重新看一眼">已确认·证据有变</span>'
+              : '<span class="hint" style="font-size:11.5px">已确认</span>')
+          : '');
+    return `
+    <tr class="${hold ? 'row-hold' : ''}">
+      <td class="c-id">${esc(row.req_id)}</td>
+      <td><div>${esc(row.requirement).slice(0, 110)}</div>
+          ${row.judge_basis ? `<div class="basis">${esc(row.judge_basis)}</div>` : ''}</td>
+      <td><span class="pill ${matchClass(row.coverage)}">${esc(row.coverage)}</span>${
+        row.votes
+          ? `<span class="voteline ${row.vote_agree === 'N' ? 'conflict' : ''}" title="双跑投票：${esc(row.votes)}">${
+              row.vote_agree === 'N' ? '两票分歧' : esc(row.votes)
+            }</span>`
+          : ''
+      }</td>
+      <td>${row.bid_page ? '第 ' + esc(row.bid_page) + ' 页' : '—'}</td>
+      <td class="quote" style="margin:0">${esc(row.evidence || '')}</td>
+      <td style="color:var(--ink3);font-family:var(--mono);font-size:11.6px">${esc(row.score || '')}</td>
+      <td>${confirmCell}</td>
+    </tr>`; }).join('');
+  const cs = s.chunk_stats || {};
+  const ocrMissing = cs.ocr_missing_pages || [];
+  const gate = s.precheck;
+  const gateHtml = gate
+    ? `<div class="match-gate ${gate.status === 'warn' ? 'warn' : 'ok'}">
+         <b>规则预判：${gate.status === 'warn' ? '需检查' : '正常'}</b>
+         <span class="m">短路 ${gate.short_circuit ?? 0} 条 · 占比 ${gate.rate ?? 0}%（数值 ${gate.numeric ?? 0} / 时间 ${gate.time ?? 0} / 实体 ${(gate.entity_hit || 0) + (gate.entity_missing || 0)}）</span>
+         ${(gate.warnings || []).length ? `<ul>${gate.warnings.map(line => `<li>${esc(line)}</li>`).join('')}</ul>` : ''}
+       </div>`
+    : '';
+  const bids = data.bids || [];
+  const picker = bids.length > 1
+    ? `<div class="bid-pick">
+         <span>投标文件 ${bids.length} 份</span>
+         <select id="bidSel">${bids.map(b => `<option value="${esc(b.slug)}"${b.slug === data.slug ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select>
+         <button class="btn sm" id="addBid">再上传一份</button>
+         <button class="btn sm" id="goMatrix">多标对比 →</button>
+       </div>`
+    : '';
+  box.innerHTML = `
+    ${picker}
+    <div class="match-head">
+      <span class="hint">投标文件：${esc(s.bid || '')}</span>
+      <span class="hint">切块 ${s.chunks} 段 · 平均 ${cs.avg_chars ?? '—'} 字 · 共 ${cs.pages ?? '—'} 页 · 解析 ${esc(cs.backend || '—')}</span>
+      <button class="btn sm" id="matchAgain">换一份投标文件</button>
+    </div>
+    ${ocrMissing.length ? `<div class="hint" style="color:#b45309;margin:4px 0 8px">⚠ 第 ${ocrMissing.join('、')} 页没有文本层且未完成 OCR，这部分内容可能漏判</div>` : ''}
+    ${gateHtml}
+    <div class="stats">
+      ${stat('已响应', '已响应')}
+      ${stat('部分响应', '部分响应')}
+      ${stat('负偏离', '负偏离')}
+      ${stat('未响应', '未响应')}
+      ${stat('未找到', '标书里没找到')}
+      ${stat('人工介入', '待人工确认')}
+      <div class="stat risk"><div class="k">需处理</div><div class="v">${(cov['未响应'] || 0) + (cov['未找到'] || 0) + (cov['负偏离'] || 0)}</div><div class="m">未响应 + 未找到 + 负偏离</div></div>
+    </div>
+    <div class="match-tools">
+      <button class="chip" id="onlyConflict" aria-pressed="${state.matchConflictOnly}" ${conflicts.length ? '' : 'disabled'}>
+        只看两票分歧 ${conflicts.length}
+      </button>
+      <span class="hint">显示 ${visible.length} / ${all.length} 条</span>
+    </div>
+    <div class="card"><table class="led" style="table-layout:fixed">
+      <colgroup><col style="width:66px"><col style="width:32%"><col style="width:84px"><col style="width:66px"><col style="width:28%"><col style="width:50px"><col style="width:120px"></colgroup>
+      <thead><tr><th>编号</th><th>要求 / 判定依据</th><th>覆盖</th><th>标书页</th><th>证据</th><th>匹配</th><th>人工确认</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="7" style="color:var(--ink3);padding:24px;text-align:center">没有两票分歧的条目</td></tr>'}</tbody>
+    </table></div>`;
+  $('matchAgain').addEventListener('click', () => $('bidFile').click());
+  const bidSel = $('bidSel');
+  if (bidSel) {
+    bidSel.addEventListener('change', async () => {
+      bidSel.disabled = true;
+      renderMatch(await api(`/api/arms/${state.current}/match?slug=${encodeURIComponent(bidSel.value)}`));
+    });
+  }
+  const addBid = $('addBid');
+  if (addBid) addBid.addEventListener('click', () => $('bidFile').click());
+  const goMatrix = $('goMatrix');
+  if (goMatrix) goMatrix.addEventListener('click', () => document.querySelector('[data-tab="matrix"]').click());
+  $('onlyConflict').addEventListener('click', () => {
+    state.matchConflictOnly = !state.matchConflictOnly;
+    renderMatchTable(state.matchData);
+  });
+  box.querySelectorAll('.mini-sel').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      if (!sel.value) return;
+      sel.disabled = true;
+      try {
+        await fetch(`/api/arms/${encodeURIComponent(state.current)}/match/review`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({req_id: sel.dataset.req, status: sel.value}),
+        });
+        renderMatch(await api(`/api/arms/${state.current}/match`));
+      } catch (e) {
+        sel.disabled = false;
+      }
+    });
+  });
+}
+
+async function pollMatch(){
+  const tick = async () => {
+    try {
+      const { bids } = await api(`/api/arms/${state.current}/bids`);
+      const active = bids.filter(bid => bid.status === 'queued' || bid.status === 'running');
+      if (active.length) {
+        $('tab-match').innerHTML = `<div class="empty">正在比对 ${active.length} 份：${active.map(bid => esc(bid.name)).join('、')} …</div>`;
+        state.matchPoll = setTimeout(tick, 3000);
+        return;
+      }
+      state.matchPoll = null;
+      renderMatch(await api(`/api/arms/${state.current}/match`));
+      toast(bids.length > 1 ? `${bids.length} 份标书比对完成` : '比对完成');
+    } catch (err) {
+      state.matchPoll = null;
+      toast('轮询失败：' + err.message);
+    }
+  };
+  if (state.matchPoll) clearTimeout(state.matchPoll);
+  state.matchPoll = setTimeout(tick, 1500);
+}
+
+/* ---------------- gate / validate ---------------- */
+function renderGate(gate){
+  const box = $('tab-gate');
+  if (!gate || !gate.stages){ box.innerHTML = '<div class="empty">这次运行还没有门禁产物</div>'; return; }
+  const overall = gate.overall
+    ? '<span class="tag ok">结构上全部通过</span>' : '<span class="tag bad">有阻塞项</span>';
+  const rec = gate.records || {};
+  const recLine = typeof rec === 'object'
+    ? `${rec.total ?? '-'} 条记录 · ${rec.blocker ?? 0} BLOCKER / ${rec.warn ?? 0} WARN / ${rec.ok ?? 0} OK`
+    : `${rec} 条记录`;
+  box.innerHTML = `
+    <div class="kv-grid" style="margin-bottom:14px">
+      <div class="kv"><span class="k">记录级判定</span><span class="v">${overall} · ${recLine}</span></div>
+      <div class="kv"><span class="k">规则来源</span><span class="v">contract/gates.json（六阶段 S0–S5）</span></div>
+      <div class="kv"><span class="k">口径提醒</span><span class="v">门禁校验结构与格式，不代表条款语义正确</span></div>
+    </div>` +
+    gate.stages.map(stage => {
+      const tag = stage.blockers ? `<span class="tag bad">${stage.blockers} BLOCKER</span>`
+        : (stage.warns ? `<span class="tag warn">${stage.warns} WARN</span>` : '<span class="tag ok">通过</span>');
+      const items = (stage.failed || []).map(item =>
+        `<li><span class="r">${esc(item.rule)}</span><span class="d">${esc(item.detail)}</span></li>`).join('');
+      return `<div class="gate-stage"><div class="h"><b>${stage.gate}</b>${tag}<span style="color:var(--ink3);font-size:12.4px">${stage.passed ? 'pass' : 'fail'}</span></div>
+        ${items ? '<ul>' + items + '</ul>' : ''}</div>`;
+    }).join('');
+}
+
+function renderValidate(validate){
+  const box = $('tab-validate');
+  if (!validate || validate.total === undefined){ box.innerHTML = '<div class="empty">这次运行还没有校验产物</div>'; return; }
+  const rows = (validate.checks || []).map(item => {
+    const name = item.name || item.column || item.check || '';
+    const passed = item.pass ?? item.passed;
+    return `<tr><td>${esc(name)}</td><td>${passed ? '<span class="tag ok">PASS</span>' : '<span class="tag bad">FAIL</span>'}</td>
+      <td style="color:var(--ink3)">${esc(item.detail || item.message || '')}</td></tr>`;
+  }).join('');
+  box.innerHTML = `
+    <div class="kv-grid" style="margin-bottom:14px">
+      <div class="kv"><span class="k">总体</span><span class="v">${validate.passed ? '<span class="tag ok">通过</span>' : '<span class="tag bad">未通过</span>'}</span></div>
+      <div class="kv"><span class="k">记录数</span><span class="v">${validate.total}</span></div>
+      <div class="kv"><span class="k">失败项</span><span class="v">${validate.failed_count}</span></div>
+    </div>
+    <div class="card"><table class="led" style="table-layout:auto">
+      <thead><tr><th style="width:200px">检查项</th><th style="width:90px">结果</th><th>说明</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="3" style="color:var(--ink3)">无明细</td></tr>'}</tbody>
+    </table></div>`;
+}
+
+/* ---------------- log & polling ---------------- */
+function renderLog(lines){
+  const box = $('console');
+  if (!lines || !lines.length){ box.innerHTML = '<span style="color:#5d6b7d">暂无日志。跑一次「新建运行」后这里会实时输出。</span>'; return; }
+  box.innerHTML = lines.slice(-500).map(line => {
+    const cls = line.startsWith('!') ? 'err' : (line.includes('$ ') ? 'k' : '');
+    return `<span class="${cls}">${esc(line)}</span>`;
+  }).join('\n');
+  box.scrollTop = box.scrollHeight;
+}
+
+function startPolling(jobId){
+  if (state.poll) clearInterval(state.poll);
+  state.poll = setInterval(async () => {
+    try {
+      const job = await api('/api/jobs/' + jobId);
+      state.job = job;
+      renderStepper();
+      renderLog(job.log);
+      if (job.status !== 'running'){
+        clearInterval(state.poll); state.poll = null;
+        toast(job.status === 'done' ? '运行完成' : '运行失败：' + (job.error || ''));
+        await loadState();
+        await selectArm(job.arm);
+      }
+    } catch (err) { /* 任务可能已被清理 */ }
+  }, 1200);
+}
+
+/* ---------------- actions ---------------- */
+$('btnMatch').addEventListener('click', () => $('bidFile').click());
+$('bidFile').addEventListener('change', async (event) => {
+  const files = [...(event.target.files || [])].filter(file => /\.pdf$/i.test(file.name));
+  event.target.value = '';
+  if (!files.length || !state.current) return;
+  document.querySelector('[data-tab="match"]').click();
+  let ok = 0;
+  for (const [index, file] of files.entries()) {
+    $('tab-match').innerHTML = `<div class="empty">正在上传 ${index + 1}/${files.length}：${esc(file.name)} …</div>`;
+    try {
+      const res = await fetch(`/api/arms/${state.current}/match?filename=` + encodeURIComponent(file.name), {
+        method: 'POST', body: file,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      ok += 1;
+    } catch (err) {
+      toast(`上传失败：${file.name}（${err.message}）`);
+    }
+  }
+  if (!ok) return;
+  toast(files.length > 1 ? `已提交 ${ok} 份，最多同时跑 2 份` : '已提交，正在比对…');
+  $('tab-match').innerHTML = '<div class="empty">正在比对，约 2 分钟/份（双跑投票）…</div>';
+  pollMatch();
+});
+
+$('btnRefresh').addEventListener('click', async () => { await loadState(); if (state.current) selectArm(state.current); });
+$('btnSvc').addEventListener('click', async () => {
+  toast('正在启动服务…');
+  try {
+    await api('/api/services/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({mode:'stub'})});
+    await loadState();
+    toast('服务已就绪');
+  } catch (err) { toast('启动失败：' + err.message); }
+});
+async function downloadFile(url, filename){
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      toast(`导出失败（${res.status}）：${detail.slice(0, 80) || '服务返回空'}`);
+      return;
+    }
+    const blob = await res.blob();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+    toast('已导出：' + filename);
+  } catch (err) {
+    toast('导出失败：' + err.message);
+  }
+}
+
+$('btnExport').addEventListener('click', () => {
+  if (!state.current) { toast('先选择一个运行'); return; }
+  downloadFile(`/api/arms/${encodeURIComponent(state.current)}/export.csv`, `${state.current}-requirements.csv`);
+});
+$('btnPdf').addEventListener('click', () => {
+  if (!state.current) { toast('先选择一个运行'); return; }
+  toast('正在生成 PDF 报告…');
+  downloadFile(`/api/arms/${encodeURIComponent(state.current)}/export.pdf`, `${state.current}-report.pdf`);
+});
+$('btnNew').addEventListener('click', () => { $('mask').hidden = false; checkFileMeta(); });
+$('mCancel').addEventListener('click', () => $('mask').hidden = true);
+$('mMode').querySelectorAll('.radio').forEach(node => node.addEventListener('click', () => {
+  $('mMode').querySelectorAll('.radio').forEach(other => other.setAttribute('aria-pressed', String(other === node)));
+}));
+$('mInject').addEventListener('click', () => {
+  const node = $('mInject');
+  node.setAttribute('aria-pressed', node.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+});
+$('mAudit').addEventListener('click', () => {
+  const node = $('mAudit');
+  node.setAttribute('aria-pressed', node.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+});
+// 文件物理属性预检：暗标泄露 / 修订记录
+async function checkFileMeta(){
+  const path = $('mFile').value;
+  const box = $('mMeta');
+  if (!path) { box.hidden = true; state.metaCheck = null; return; }
+  box.hidden = false;
+  box.className = 'meta-line checking';
+  box.textContent = '正在检查文件属性…';
+  try {
+    const report = await api('/api/filecheck?path=' + encodeURIComponent(path));
+    state.metaCheck = report;
+    const bad = String(report.status || '').startsWith('高危');
+    box.className = 'meta-line ' + (bad ? 'bad' : 'ok');
+    const detail = (report.details || []).join('；');
+    box.innerHTML = `<b>${esc(report.status)}</b>${detail ? ' · ' + esc(detail) : ''}`;
+  } catch (err) {
+    state.metaCheck = null;
+    box.hidden = true;
+  }
+}
+
+$('mFile').addEventListener('change', checkFileMeta);
+
+$('mUpload').addEventListener('change', async (event) => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (!/\.pdf$/i.test(file.name)) { toast('只支持 PDF'); return; }
+  toast('上传中：' + file.name);
+  try {
+    const res = await fetch('/api/upload?name=' + encodeURIComponent(file.name), { method: 'POST', body: file });
+    if (!res.ok) throw new Error(await res.text());
+    const doc = await res.json();
+    if (!state.docs.some(item => item.path === doc.path)) state.docs.push(doc);
+    renderDocOptions();
+    $('mFile').value = doc.path;
+    toast(`已导入：${doc.name}（${doc.size_mb}MB）`);
+    if (doc.meta_check) {
+      state.metaCheck = doc.meta_check;
+      const bad = String(doc.meta_check.status || '').startsWith('高危');
+      $('mMeta').hidden = false;
+      $('mMeta').className = 'meta-line ' + (bad ? 'bad' : 'ok');
+      $('mMeta').innerHTML = `<b>${esc(doc.meta_check.status)}</b>` +
+        ((doc.meta_check.details || []).length ? ' · ' + esc(doc.meta_check.details.join('；')) : '');
+    } else {
+      checkFileMeta();
+    }
+  } catch (err) {
+    toast('上传失败：' + err.message);
+  }
+});
+
+$('mStart').addEventListener('click', async () => {
+  const mode = $('mMode').querySelector('.radio[aria-pressed=true]').dataset.v;
+  const inject = $('mInject').getAttribute('aria-pressed') === 'true';
+  const audit = $('mAudit').getAttribute('aria-pressed') === 'true';
+  const label = $('mLabel').value.trim();
+  const picked = [...($('mUpload').files || [])].filter(file => /\.pdf$/i.test(file.name));
+
+  if (mode === 'real' && !state.services.api){
+    toast('先启动服务再跑真实模型'); return;
+  }
+  if (state.metaCheck && String(state.metaCheck.status || '').startsWith('高危') && !picked.length) {
+    const detail = (state.metaCheck.details || []).join('\n');
+    if (!confirm(`文件体检：${state.metaCheck.status}\n${detail}\n\n仍要开始运行吗？`)) return;
+  }
+  $('mask').hidden = true;
+
+  try {
+    if (picked.length) {
+      // 多份招标文件：逐个上传 → 批量建任务（后端排队，最多同时 2 条）
+      const paths = [];
+      for (const [index, file] of picked.entries()) {
+        toast(`上传 ${index + 1}/${picked.length}：${file.name}`);
+        const res = await fetch('/api/upload?name=' + encodeURIComponent(file.name), { method: 'POST', body: file });
+        if (!res.ok) { toast(`上传失败：${file.name}`); continue; }
+        paths.push((await res.json()).path);
+      }
+      if (!paths.length) return;
+      const batch = await api('/api/jobs/batch', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ files: paths, mode, inject, audit }),
+      });
+      toast(`已提交 ${batch.count} 份招标文件，排队执行`);
+      await loadState();
+      startQueuePoll();
+      return;
+    }
+
+    const payload = { file: $('mFile').value, mode, inject, audit, label };
+    const job = await api('/api/jobs', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+    toast('已启动：' + job.arm);
+    await loadState();
+    state.current = job.arm;
+    $('runTitle').textContent = label || '新建运行';
+    $('runSub').textContent = '运行中…';
+    document.querySelector('[data-tab="log"]').click();
+    startPolling(job.id);
+    startQueuePoll();
+  } catch (err) { toast('启动失败：' + err.message); }
+});
+
+$('riskChip').addEventListener('click', () => {
+  state.risk = !state.risk; state.page = 0;
+  renderChips(); paint();
+});
+$('riskOnly').addEventListener('click', () => {
+  state.risk = true; state.page = 0;
+  renderChips(); paint();
+  document.querySelector('.card')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+});
+
+document.querySelectorAll('#tabs button').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('#tabs button').forEach(other => other.setAttribute('aria-selected', String(other === btn)));
+  ['ledger','match','matrix','gate','validate','log'].forEach(name => $('tab-' + name).hidden = name !== btn.dataset.tab);
+  history.replaceState(null, '', '#' + btn.dataset.tab);
+  if (btn.dataset.tab === 'matrix') loadMatrix();
+}));
+
+const initialTab = (location.hash || '').replace('#', '');
+if (['gate','validate','log'].includes(initialTab)) {
+  const target = document.querySelector(`#tabs button[data-tab="${initialTab}"]`);
+  if (target) target.click();
+}
+
+$('q').addEventListener('input', event => { state.q = event.target.value.trim(); state.page = 0; paint(); });
+
+if (new URLSearchParams(location.search).get('new')) $('mask').hidden = false;
+
+loadState().catch(err => {
+  $('arms').innerHTML = '<div class="empty">加载失败：' + esc(err.message) + '</div>';
+});
+</script>
+</body>
+</html>

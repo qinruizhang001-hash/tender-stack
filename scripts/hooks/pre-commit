@@ -1,0 +1,8 @@
+#!/bin/sh
+# 由 scripts/install_hooks.ps1 安装到 .git/hooks/pre-commit
+# 逻辑全在 scripts/pre_commit.ps1，这里只负责把控制权交过去。
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+[ -f "$root/scripts/pre_commit.ps1" ] || exit 0
+
+exec powershell -NoProfile -ExecutionPolicy Bypass -File "$root/scripts/pre_commit.ps1"

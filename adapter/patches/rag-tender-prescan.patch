@@ -1,0 +1,91 @@
+--- adapter/patches/extraction.py.orig	2026-11-02 22:16:57.551466600 +0800
++++ vendor/rag-tender/backend/app/services/extraction.py	2026-11-02 22:50:42.353435800 +0800
+@@ -1,9 +1,11 @@
+ import hashlib
+ import json
++import os
+ import re
+ from dataclasses import dataclass
+ from datetime import date
+-from typing import Literal
++from pathlib import Path
++from typing import Any, Literal
+ 
+ from pydantic import BaseModel, Field, field_validator
+ from sqlalchemy import select
+@@ -117,6 +119,25 @@
+ MAX_BLOCKS_PER_BATCH = 8
+ MAX_BATCH_CHARS = 6000
+ 
++# --- 确定性扫描层前置（可选，环境变量开启；不设置则行为与上游完全一致）---
++# 只读一个 JSON 文件，不依赖任何外部项目代码，属于数据流对接。
++_PRESCAN_CACHE: dict[str, Any] | None = None
++
++
++def prescan_payload() -> dict[str, Any]:
++    global _PRESCAN_CACHE
++    if _PRESCAN_CACHE is not None:
++        return _PRESCAN_CACHE
++    path = os.environ.get("TENDER_PRESCAN_JSON", "")
++    if not path:
++        _PRESCAN_CACHE = {}
++        return _PRESCAN_CACHE
++    try:
++        _PRESCAN_CACHE = json.loads(Path(path).read_text(encoding="utf-8"))
++    except (OSError, json.JSONDecodeError):
++        _PRESCAN_CACHE = {}
++    return _PRESCAN_CACHE
++
+ 
+ @dataclass(frozen=True)
+ class BlockFragment:
+@@ -548,6 +569,33 @@
+             {"block_id": block.id, "kind": block.kind, "text": block.text} for block in blocks
+         ],
+     }
++    prescan = prescan_payload()
++    if prescan and blocks:
++        # 用「块原文」作为对接键：block_id 每次解析都会重新生成，不能跨运行复用。
++        skip_texts = set(prescan.get("skip_texts") or [])
++        if all(block.text in skip_texts for block in blocks):
++            # 整批已被确定性扫描完全覆盖：不再调用模型
++            return ExtractedRequirements(
++                coverage_notes=[
++                    f"第 {page.page_index + 1} 页第 {batch_no} 批已由确定性扫描覆盖，未调用模型"
++                ]
++            )
++        # 部分覆盖：把已确认条目告诉模型，要求不重复判断
++        known_quotes = prescan.get("by_quote") or []
++        subset: dict[str, list[str]] = {}
++        for block in blocks:
++            quotes = [item.get("quote", "") for item in known_quotes if item.get("quote") and item["quote"] in block.text]
++            if quotes:
++                subset[block.id] = quotes
++        if subset:
++            page_payload["known_issues"] = subset
++
++    prescan_hint = (
++        "以下 known_issues 中的条目已由确定性扫描确认为硬性/废标条款，"
++        "不要重复提取，只处理扫描层未覆盖的语义条款。\n"
++        if page_payload.get("known_issues")
++        else ""
++    )
+     return await structured_text(
+         session,
+         system=EXTRACTION_SYSTEM,
+@@ -555,6 +603,7 @@
+             "请分析以下文本块，提取行动要求，以及有出处的项目概况、时间节点和合同信息。"
+             "行动要求放 requirements，背景信息放 reading_items；各自没有内容时返回空数组。"
+             "quote 只引用足以证明该要求的原文，不要复述整段原文。\n"
++            f"{prescan_hint}"
+             f"{json.dumps(page_payload, ensure_ascii=False)}"
+         ),
+         output_model=ExtractedRequirements,
+@@ -562,6 +611,7 @@
+         job_id=job_id,
+         prompt_version=run.prompt_version,
+         config_id=config_id,
++        max_tokens=int(os.environ.get("TENDER_EXTRACT_MAX_TOKENS", "8192")),
+     )
+ 
+ 

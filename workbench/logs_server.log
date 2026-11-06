@@ -1,0 +1,9 @@
+INFO:     Started server process [56260]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8330 (Press CTRL+C to quit)
+INFO:     127.0.0.1:58060 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61369 - "GET /api/arms/bench_1103_222748/match HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61385 - "POST /api/arms/bench_1103_222748/match/review HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52824 - "GET /api/arms/bench_1103_222748/match HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58220 - "HEAD / HTTP/1.1" 405 Method Not Allowed

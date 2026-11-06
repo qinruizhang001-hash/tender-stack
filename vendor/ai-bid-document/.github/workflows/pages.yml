@@ -1,0 +1,68 @@
+name: Pages
+
+# 发布 docs/ 为可视化发布页。
+#
+# 首次运行：configure-pages 带 enablement: true，会用 GITHUB_TOKEN 自动把 Pages 的
+# 构建源设为 "GitHub Actions"，无需手工进 Settings 点开关。
+#   · 个人仓库：通常可直接启用。
+#   · 组织仓库受限、或 Token 被降权时：会失败，届时在 Settings → Pages 手工选一次
+#     "GitHub Actions" 即可，之后本工作流长期自动运行。
+#
+# 手动兜底：Actions → Pages → Run workflow。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages（未启用时尝试自动启用）
+        id: pages
+        uses: actions/configure-pages@v5
+        with:
+          # 关键：Pages 未配置时让本工作流自行创建站点
+          enablement: true
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: 失败诊断
+        if: failure()
+        run: |
+          echo "::group::Pages 部署失败排查"
+          echo "1) 若是 configure-pages 报 'Get Pages site failed'："
+          echo "   说明 GITHUB_TOKEN 无权自动启用 Pages。"
+          echo "   手动一次即可：Settings → Pages → Build and deployment → Source → GitHub Actions"
+          echo "2) 若是 deploy-pages 报 'Not Found' 或 artifact 缺失："
+          echo "   确认 docs/ 目录内存在 index.html（本次 checkout：）"
+          ls -la docs || true
+          echo "3) 若是 403 'Resource not accessible by integration'："
+          echo "   Settings → Actions → General → Workflow permissions 选 Read and write"
+          echo "::endgroup::"

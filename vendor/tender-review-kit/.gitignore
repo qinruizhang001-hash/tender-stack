@@ -1,0 +1,63 @@
+# tender-review-skill · .gitignore
+# 保证开源仓库不含任何用户标书 / 运行时产物。
+
+# 运行时产物(扫过的标书会落在这里)
+workspace/
+
+# 用户标书文件(任何来路的招标文件都不进仓库)
+*.pdf
+*.docx
+*.doc
+
+# 例外:测试用的合成样本必须能进仓库,供回归测试使用
+!tests/fixtures/*.docx
+!tests/fixtures/*.pdf
+
+# Excel 输出(用户产生的核对清单不进仓库)
+*.xlsx
+
+# 决定文件 + coverage 中间产物
+_decisions_*.txt
+*.coverage.json
+*.hits.json
+*.tables.json
+*.lines.txt
+
+# 候选词(含用户标书原文片段):新默认在 workspace/<项目>.candidates.json(已随 workspace/ 整体忽略)
+# 下面是兜底:候选词文件含原文,任何位置都不进仓库
+data/candidates.json
+*.candidates.json
+
+# 用户本地词库(每个用户审标过程中积累的私有判词,不进仓库)
+# 通过 export_contribution.py 选择性贡献给开源 keywords.json
+data/local_keywords.json
+*.hits.v2.json
+*.pending_words.json
+
+# export_contribution.py 导出的临时贡献文件(本地预览用,贡献后可删)
+/contribution.md
+
+# 发布给网盘/用户的本地压缩包
+/release/
+
+# 开发期私人记录(开源仓库不带)
+OPEN_TASKS.md
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# AI 工具本地设置(含本机标书文件名/权限,不进仓库)
+.claude/settings.local.json

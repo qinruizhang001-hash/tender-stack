@@ -1,0 +1,74 @@
+{
+  "$comment": "六阶段门禁规则，逐条来自 vendor/ai-bid-document/SKILL.md §三/§四 与 references/requirement-parsing.md。本文件是机读版，用于替换 rag-tender 默认的 needs_review 判定阈值。改这里=改门禁，不需要改任何仓库代码。",
+  "version": "ai-bid-document@v2.0",
+  "stages": [
+    {"id": "S0", "name": "建档", "gate": "G0", "purpose": "确认输入可读、登记输入清单"},
+    {"id": "S1", "name": "解析", "gate": "G1", "purpose": "生成 requirements 台账 + 三个基准数字"},
+    {"id": "S2", "name": "映射", "gate": "G2", "purpose": "每条 req_id 映射章节，评分点映射承载章节"},
+    {"id": "S3", "name": "撰写", "gate": null, "purpose": "逐章推进（本轮不涉及，M1 读标模式）"},
+    {"id": "S4", "name": "双轨核查", "gate": "G3", "purpose": "脚本管形式，清单管实质"},
+    {"id": "S5", "name": "交付", "gate": null, "purpose": "八件套齐备"}
+  ],
+  "gates": {
+    "G0": {
+      "name": "输入可读",
+      "source": "SKILL.md §三 S0 门禁 G0",
+      "rule": "招标文件缺失或为不可读扫描件（未 OCR）→ 停止",
+      "checks": [
+        {"id": "g0.pages", "type": "hard", "expr": "pages >= 1", "fail": "文档没有可分析页面"},
+        {"id": "g0.blocks", "type": "hard", "expr": "blocks_with_text >= 1", "fail": "全部页面无文本层，需先 OCR"},
+        {"id": "g0.scanned_ratio", "type": "warn", "expr": "scanned_pages / pages <= 0.2", "fail": "扫描页占比过高，文字与坐标需人工复核"}
+      ]
+    },
+    "G1": {
+      "name": "解析口径完整",
+      "source": "SKILL.md §三 S1 门禁 G1（经验值：每 10 页 ≈ 15–30 条）",
+      "rule": "条目数明显低于条款量级 → 抽取口径漏了；重复条款须合并",
+      "checks": [
+        {"id": "g1.density_low", "type": "hard", "expr": "items_per_10_pages >= 15", "fail": "每 10 页条目数低于 15，抽取口径漏项"},
+        {"id": "g1.density_high", "type": "warn", "expr": "items_per_10_pages <= 30", "fail": "每 10 页条目数高于 30，疑似整段照抄未拆分"},
+        {"id": "g1.dup_merged", "type": "warn", "expr": "dup_unmerged == 0", "fail": "存在未合并的重复条款，必答数虚高"},
+        {"id": "g1.quote_trace", "type": "hard", "expr": "records_without_quote == 0", "fail": "存在无 source_quote 的条目，无法溯源"}
+      ]
+    },
+    "G2": {
+      "name": "映射闭合（硬门禁）",
+      "source": "SKILL.md §三 S2 门禁 G2",
+      "rule": "存在未映射的 mandatory=Y 条目 → 禁止进入下一阶段",
+      "checks": [
+        {"id": "g2.mandatory_mapped", "type": "hard", "expr": "mandatory_without_section == 0", "fail": "存在未映射章节的必答条目"},
+        {"id": "g2.owner_assigned", "type": "warn", "expr": "records_owner_pending == 0", "fail": "存在 owner=待定 的条目，派单会断链"},
+        {"id": "g2.line_located", "type": "warn", "expr": "records_line_missing == 0", "fail": "存在无法回查原文行号的条目，溯源不合格"}
+      ]
+    },
+    "G3": {
+      "name": "核查清零",
+      "source": "SKILL.md §三 S4 门禁 G3（BLOCKER 必须清零，WARN 可保留但需写明理由）",
+      "rule": "BLOCKER 必须清零",
+      "checks": [
+        {"id": "g3.quote_verbatim", "type": "hard", "expr": "quote_not_in_source == 0", "fail": "quote 不是原文逐字摘录"},
+        {"id": "g3.block_id", "type": "hard", "expr": "records_without_block_id == 0", "fail": "存在无 block_id 的条目，无法回到原页"},
+        {"id": "g3.placeholder", "type": "warn", "expr": "placeholder_hits == 0", "fail": "存在占位符残留（[待确认] 等）"},
+        {"id": "g3.grey_wording", "type": "warn", "expr": "grey_wording_hits == 0", "fail": "存在灰色表述（基本响应/部分响应）"}
+      ]
+    }
+  },
+  "needs_review_policy": {
+    "$comment": "替换 rag-tender 默认判定。默认逻辑只有一条『硬性要求缺证据 → needs_review』；这里改为门禁驱动，任何一条命中即 需复核，并记录命中的规则 id。",
+    "replaces_default": "mandatory_without_evidence -> needs_review",
+    "triggers": [
+      {"id": "nr.g2_blocker", "when": "record violates any G2 hard check", "severity": "BLOCKER"},
+      {"id": "nr.g3_blocker", "when": "record violates any G3 hard check", "severity": "BLOCKER"},
+      {"id": "nr.low_confidence", "when": "confidence is not null and confidence < 0.75", "severity": "WARN", "threshold": 0.75},
+      {"id": "nr.clarify", "when": "need_clarify == 'Y'", "severity": "WARN"},
+      {"id": "nr.no_line", "when": "line_no == -1", "severity": "WARN"}
+    ],
+    "note": "rag-tender 自身的 needs_review 状态不删除、不改写；本策略在其之上做分级（BLOCKER/WARN），BLOCKER 阻断交付。"
+  },
+  "stop_rules": [
+    {"id": "stop.conflict", "when": "同一要求两处表述冲突", "action": "记录双方原文，标 冲突待澄清，不自行择一"},
+    {"id": "stop.commitment", "when": "要求写入超授权承诺", "action": "写 [待商务确认]"},
+    {"id": "stop.blocker", "when": "必答映射缺口>0 或 BLOCKER>0", "action": "停止交付，先清零"}
+  ],
+  "conflict_priority": ["补遗/澄清文件", "招标文件正文", "招标文件附件格式表", "用户口述", "历史标书/模板"]
+}

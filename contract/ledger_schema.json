@@ -1,0 +1,160 @@
+{
+  "$comment": "15 列要求台账契约。列顺序/列名/枚举值直接来自 vendor/ai-bid-document/templates/requirements.csv 与 references/requirement-parsing.md，禁止本地改写。任何一列映射不到，视为契约违约。",
+  "version": "ai-bid-document@v2.0",
+  "source_of_truth": [
+    "vendor/ai-bid-document/templates/requirements.csv",
+    "vendor/ai-bid-document/references/requirement-parsing.md",
+    "vendor/ai-bid-document/SKILL.md"
+  ],
+  "columns": [
+    {
+      "index": 1,
+      "name": "req_id",
+      "type": "string",
+      "pattern": "^R-[0-9]{3,}$",
+      "note": "本层生成，稳定递增；排序键 = (文档, 页序, 块序, 块内偏移)",
+      "required": true
+    },
+    {
+      "index": 2,
+      "name": "section",
+      "type": "string",
+      "note": "章节号+标题。rag-tender 无章节树，用最近的上层标题块推断；推断不到则写 `第N页` 并在 note 标 section_inferred=page",
+      "required": true
+    },
+    {
+      "index": 3,
+      "name": "requirement",
+      "type": "string",
+      "note": "一句话一条，可独立判定满足/不满足。来自 requirement.statement",
+      "required": true
+    },
+    {
+      "index": 4,
+      "name": "type",
+      "type": "enum",
+      "enum": ["资格", "技术", "商务", "服务", "格式", "评分", "其他"],
+      "note": "句内优先、章节兜底（parsing.md §十）。由 rag-tender category 映射",
+      "required": true
+    },
+    {
+      "index": 5,
+      "name": "mandatory",
+      "type": "enum",
+      "enum": ["Y", "N"],
+      "note": "obligation==mandatory → Y；scored/optional/informational → N",
+      "required": true
+    },
+    {
+      "index": 6,
+      "name": "strength",
+      "type": "enum",
+      "enum": ["禁止", "必须", "应", "宜", "可"],
+      "note": "五级强制强度（parsing.md §七）。先看词再看章节，冲突取更严",
+      "required": true
+    },
+    {
+      "index": 7,
+      "name": "source_quote",
+      "type": "string",
+      "note": "原文逐字照抄。直接取 source_span.quote（rag-tender 已做原文偏移校验）",
+      "required": true
+    },
+    {
+      "index": 8,
+      "name": "source_ver",
+      "type": "string",
+      "note": "v1 / 补遗-01 / 答疑-02，由 document.role + revision 推导",
+      "required": true
+    },
+    {
+      "index": 9,
+      "name": "line_no",
+      "type": "integer",
+      "note": "原文行号（.docx 为段落序号）。由扫描层 lines.txt 反查 quote 得到；查不到写 -1 并计入 G1 缺口",
+      "required": true
+    },
+    {
+      "index": 10,
+      "name": "response_type",
+      "type": "enum",
+      "enum": ["响应", "证明", "承诺", "待办", "人工"],
+      "note": "handling_mode 映射：technical→响应, evidence/submission/fill→证明, commercial→承诺, todo→待办, manual→人工",
+      "required": true
+    },
+    {
+      "index": 11,
+      "name": "need_clarify",
+      "type": "enum",
+      "enum": ["Y", "N"],
+      "note": "表述含糊/前后矛盾/指代不明 → Y。命中歧义词表或条件缺失即 Y",
+      "required": true
+    },
+    {
+      "index": 12,
+      "name": "dup_of",
+      "type": "string",
+      "note": "重复/被覆盖条目指向主条 req_id；主条为空。判定：归一化相同、相似度≥0.90 且 type 相同、或子集关系",
+      "required": false
+    },
+    {
+      "index": 13,
+      "name": "owner",
+      "type": "enum",
+      "enum": ["商务部", "技术部", "服务部", "财务部", "安全部", "投标组", "待定"],
+      "note": "按 type 派单（parsing.md §十：type 判错会让 owner 派错人）",
+      "required": true
+    },
+    {
+      "index": 14,
+      "name": "status",
+      "type": "enum",
+      "enum": ["待响应", "需复核", "重复合并", "无需响应"],
+      "note": "保留 rag-tender needs_review 语义：进入 needs_review 的条 → 需复核；dup_of 非空 → 重复合并",
+      "required": true
+    },
+    {
+      "index": 15,
+      "name": "note",
+      "type": "string",
+      "note": "自由文本。强制携带 block_id 与来源标记（block_id=xxx; via=llm|scan）",
+      "required": false
+    }
+  ],
+  "provenance_sidecar": {
+    "file": "requirements.provenance.jsonl",
+    "$comment": "15 列之外的溯源旁挂文件，不污染台账列结构；一行一条，供 30 秒定位校验",
+    "fields": [
+      "req_id",
+      "block_id",
+      "page_id",
+      "page_index",
+      "char_start",
+      "char_end",
+      "quote_hash",
+      "confidence",
+      "extraction_method",
+      "rag_tender_requirement_id",
+      "source_span_id"
+    ]
+  },
+  "category_map": {
+    "qualification": "资格",
+    "personnel": "资格",
+    "performance": "资格",
+    "financial": "资格",
+    "technical": "技术",
+    "commercial": "商务",
+    "submission": "格式",
+    "other": "其他"
+  },
+  "owner_map": {
+    "资格": "商务部",
+    "技术": "技术部",
+    "商务": "商务部",
+    "服务": "服务部",
+    "格式": "投标组",
+    "评分": "商务部",
+    "其他": "待定"
+  }
+}

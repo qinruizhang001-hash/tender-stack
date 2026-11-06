@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# 投标项目实际数据（切勿提交真实招标/投标文件）
+*.docx
+*.doc
+*.pdf
+!templates/*.csv
+
+# 运行时产物
+bid/
+draft/
+draft*/
+requirements.local.csv
+outline-map.local.csv
+validate-report.txt
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 打包产物
+dist/

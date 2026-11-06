@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ai-bid-document v2.0.1 · 双轨投标引擎</title>
+<meta name="description" content="把招标文件变成可核对的要求台账，逐条应答、双轨核查、交付前自动清障。ai-bid-document v2.0.1 发布。" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="ai-bid-document" />
+<meta property="og:title" content="ai-bid-document v2.0.1 · 双轨投标引擎" />
+<meta property="og:description" content="四模式路由 + 六阶段门禁 + 废标风险与评分覆盖双轨核查。21 条确定性规则，26 项零依赖回归测试。" />
+<meta property="og:url" content="https://jackon-li.github.io/ai-bid-document/" />
+<meta property="og:locale" content="zh_CN" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="ai-bid-document v2.0.1 · 双轨投标引擎" />
+<meta name="twitter:description" content="把招标文件变成可核对的要求台账：不漏项、不编造、不越界、可核对。" />
+<meta name="theme-color" content="#07090f" />
+<style>
+  /* ============ 设计令牌 ============ */
+  :root{
+    --max: 1140px;
+    --bg: #07090f;
+    --bg-2: #0b1020;
+    --panel: rgba(255,255,255,.035);
+    --panel-2: rgba(255,255,255,.06);
+    --line: rgba(255,255,255,.09);
+    --line-2: rgba(255,255,255,.16);
+    --text: #eef2ff;
+    --muted: #9aa6bf;
+    --dim: #6b7793;
+    --cyan: #22d3ee;
+    --violet: #a78bfa;
+    --amber: #fbbf24;
+    --rose: #fb7185;
+    --green: #34d399;
+    --radius: 18px;
+    --shadow: 0 24px 60px -24px rgba(0,0,0,.8);
+    --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+            "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  }
+  html[data-theme="light"]{
+    --bg: #f7f8fc;
+    --bg-2: #eef1f8;
+    --panel: rgba(255,255,255,.85);
+    --panel-2: #ffffff;
+    --line: rgba(15,23,42,.10);
+    --line-2: rgba(15,23,42,.18);
+    --text: #0f172a;
+    --muted: #4a5568;
+    --dim: #77839a;
+    --cyan: #0891b2;
+    --violet: #7c3aed;
+    --amber: #b45309;
+    --rose: #e11d48;
+    --green: #059669;
+    --shadow: 0 24px 60px -30px rgba(15,23,42,.35);
+  }
+
+  *{ box-sizing: border-box; }
+  html{ scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body{
+    margin:0; font-family: var(--sans); color: var(--text); background: var(--bg);
+    line-height: 1.65; letter-spacing: .01em; overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection{ background: color-mix(in srgb, var(--cyan) 35%, transparent); }
+
+  /* 背景层 */
+  body::before{
+    content:""; position: fixed; inset:0; z-index:-2; pointer-events:none;
+    background:
+      radial-gradient(900px 500px at 12% -8%, color-mix(in srgb, var(--cyan) 22%, transparent), transparent 60%),
+      radial-gradient(700px 420px at 88% 4%, color-mix(in srgb, var(--violet) 20%, transparent), transparent 62%),
+      linear-gradient(180deg, var(--bg), var(--bg-2) 55%, var(--bg));
+  }
+  body::after{
+    content:""; position: fixed; inset:0; z-index:-1; pointer-events:none; opacity:.5;
+    background-image:
+      linear-gradient(to right, var(--line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+    background-size: 88px 88px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 20%, transparent 78%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 20%, transparent 78%);
+  }
+
+  a{ color: inherit; text-decoration: none; }
+  h1,h2,h3,h4{ margin:0; line-height:1.18; letter-spacing:-.02em; font-weight:800; }
+  p{ margin:0; }
+  code, pre{ font-family: var(--mono); }
+
+  .wrap{ width:min(100% - 40px, var(--max)); margin-inline:auto; }
+
+  /* 进度条 */
+  #progress{
+    position: fixed; top:0; left:0; height:2px; width:0%;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    z-index: 100; box-shadow: 0 0 18px color-mix(in srgb, var(--cyan) 60%, transparent);
+  }
+
+  /* ============ 导航 ============ */
+  header.nav{
+    position: sticky; top:0; z-index: 60;
+    backdrop-filter: blur(14px) saturate(140%);
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner{ display:flex; align-items:center; gap:18px; height:64px; }
+  .brand{ display:flex; align-items:center; gap:10px; font-weight:750; font-size:15px; letter-spacing:-.01em; }
+  .mark{
+    width:26px; height:26px; border-radius:8px; display:grid; place-items:center;
+    background: linear-gradient(140deg, var(--cyan), var(--violet));
+    box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--cyan) 70%, transparent);
+  }
+  .mark svg{ width:15px; height:15px; }
+  .nav-links{ display:flex; gap:6px; margin-left:auto; }
+  .nav-links a{
+    font-size:13.5px; color:var(--muted); padding:7px 11px; border-radius:9px;
+    transition: color .2s, background .2s;
+  }
+  .nav-links a:hover{ color:var(--text); background: var(--panel); }
+  .nav-actions{ display:flex; align-items:center; gap:8px; }
+  .icon-btn{
+    width:34px; height:34px; border-radius:10px; border:1px solid var(--line);
+    background: var(--panel); color: var(--muted); display:grid; place-items:center;
+    cursor:pointer; transition: .2s;
+  }
+  .icon-btn:hover{ color:var(--text); border-color:var(--line-2); transform: translateY(-1px); }
+  .btn{
+    display:inline-flex; align-items:center; gap:8px; height:36px; padding:0 15px;
+    border-radius:11px; font-size:13.5px; font-weight:600; border:1px solid var(--line-2);
+    background: var(--panel); color: var(--text); cursor:pointer; transition:.22s;
+    white-space: nowrap;
+  }
+  .btn:hover{ transform: translateY(-1px); border-color: color-mix(in srgb, var(--cyan) 55%, var(--line-2)); }
+  .btn-primary{
+    border:none; color:#04121a; font-weight:750;
+    background: linear-gradient(120deg, #67e8f9, #a5b4fc 70%);
+    box-shadow: 0 12px 28px -14px color-mix(in srgb, var(--cyan) 85%, transparent);
+  }
+  .btn-primary:hover{ box-shadow: 0 16px 34px -14px color-mix(in srgb, var(--cyan) 95%, transparent); }
+
+  /* ============ Hero ============ */
+  .hero{ padding: 76px 0 40px; position:relative; }
+  .pill{
+    display:inline-flex; align-items:center; gap:9px; font-family:var(--mono); font-size:12px;
+    letter-spacing:.08em; text-transform:uppercase; color: var(--muted);
+    border:1px solid var(--line-2); border-radius:999px; padding:7px 14px;
+    background: var(--panel);
+  }
+  .dot{ width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 0 4px color-mix(in srgb, var(--green) 18%, transparent); }
+  h1.title{
+    margin-top:26px; font-size: clamp(38px, 6.6vw, 78px); font-weight:850; letter-spacing:-.035em;
+    max-width: 15ch;
+  }
+  .grad{
+    background: linear-gradient(100deg, var(--cyan) 0%, #c4b5fd 48%, #fbcfe8 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .lede{
+    margin-top:22px; max-width: 62ch; font-size: clamp(15px, 1.6vw, 19px); color: var(--muted);
+  }
+  .lede strong{ color:var(--text); font-weight:650; }
+  .cta-row{ margin-top:32px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .cta-row .hint{ font-size:12.5px; color:var(--dim); font-family:var(--mono); }
+
+  .stats{
+    margin-top:56px; display:grid; grid-template-columns: repeat(4, 1fr); gap:12px;
+  }
+  .stat{
+    border:1px solid var(--line); border-radius:var(--radius); padding:20px 18px;
+    background: linear-gradient(180deg, var(--panel), transparent);
+    position:relative; overflow:hidden;
+  }
+  .stat::after{
+    content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    background: radial-gradient(220px 90px at 100% 0%, color-mix(in srgb, var(--cyan) 16%, transparent), transparent 70%);
+  }
+  .stat b{ display:block; font-size: clamp(26px, 3.4vw, 38px); font-weight:800; letter-spacing:-.03em; font-variant-numeric: tabular-nums; }
+  .stat span{ display:block; margin-top:4px; font-size:12.5px; color:var(--muted); }
+  .stat small{ font-family:var(--mono); font-size:11px; color:var(--dim); letter-spacing:.06em; }
+
+  /* ============ 通用 section ============ */
+  section{ padding: 96px 0; }
+  .sec-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:38px; flex-wrap:wrap; }
+  .kicker{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.16em; text-transform:uppercase;
+    color: var(--cyan); display:flex; align-items:center; gap:10px; margin-bottom:14px;
+  }
+  .kicker::before{ content:""; width:22px; height:1px; background:var(--cyan); opacity:.7; }
+  h2.h2{ font-size: clamp(26px, 3.6vw, 40px); max-width: 20ch; }
+  .sub{ color:var(--muted); max-width: 56ch; font-size:14.5px; margin-top:12px; }
+
+  /* 卡片通用 */
+  .card{
+    border:1px solid var(--line); border-radius:var(--radius); background: var(--panel);
+    padding:24px; transition: transform .28s cubic-bezier(.2,.7,.2,1), border-color .28s, background .28s;
+    position:relative; overflow:hidden;
+  }
+  .card:hover{ transform: translateY(-3px); border-color: var(--line-2); background: var(--panel-2); }
+  .card h3{ font-size:16.5px; }
+  .card p{ margin-top:9px; font-size:13.8px; color:var(--muted); }
+
+  /* 痛点三卡 */
+  .pains{ display:grid; grid-template-columns: repeat(3, 1fr); gap:14px; }
+  .pain .tag{
+    font-family:var(--mono); font-size:11px; letter-spacing:.1em; color:var(--rose);
+    border:1px solid color-mix(in srgb, var(--rose) 40%, transparent); border-radius:6px;
+    padding:3px 8px; display:inline-block; margin-bottom:14px;
+  }
+  .pain .fix{
+    margin-top:16px; padding-top:14px; border-top:1px dashed var(--line);
+    font-size:13px; color: var(--text); display:flex; gap:9px; align-items:flex-start;
+  }
+  .pain .fix svg{ flex:0 0 auto; margin-top:2px; color: var(--green); }
+
+  /* 模式 */
+  .modes{ display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; }
+  .mode{ padding:22px; }
+  .mode .id{
+    font-family:var(--mono); font-size:12px; color:var(--cyan); letter-spacing:.08em;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .mode .id i{ font-style:normal; color:var(--dim); }
+  .mode h3{ margin-top:12px; font-size:17px; }
+  .mode .q{ margin-top:10px; font-size:13px; color:var(--muted); font-style:italic; }
+  .mode .out{ margin-top:16px; font-size:12.5px; color:var(--dim); }
+  .mode .out b{ color: var(--text); font-weight:600; }
+
+  /* 流程时间线 */
+  .flow{ position:relative; display:grid; grid-template-columns: repeat(6, 1fr); gap:10px; }
+  .flow::before{
+    content:""; position:absolute; left:0; right:0; top:23px; height:1px;
+    background: linear-gradient(90deg, transparent, var(--line-2) 8%, var(--line-2) 92%, transparent);
+  }
+  .step{ position:relative; padding-top:52px; }
+  .step .node{
+    position:absolute; top:14px; left:0; width:19px; height:19px; border-radius:50%;
+    border:2px solid color-mix(in srgb, var(--cyan) 70%, transparent);
+    background: var(--bg); display:grid; place-items:center;
+  }
+  .step .node::after{ content:""; width:5px; height:5px; border-radius:50%; background:var(--cyan); }
+  .step.gate .node{ border-color: color-mix(in srgb, var(--amber) 75%, transparent); }
+  .step.gate .node::after{ background: var(--amber); }
+  .step h4{ font-size:14.5px; letter-spacing:-.01em; }
+  .step .code{ font-family:var(--mono); font-size:11px; color:var(--cyan); letter-spacing:.08em; }
+  .step p{ margin-top:8px; font-size:12.6px; color:var(--muted); }
+  .gate-badge{
+    margin-top:10px; display:inline-block; font-family:var(--mono); font-size:10.5px;
+    color: var(--amber); border:1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+    border-radius:5px; padding:2px 7px;
+  }
+
+  /* 修复对比 */
+  .fix-table{ border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; }
+  .fix-row{
+    display:grid; grid-template-columns: 1.1fr 1fr 1fr; gap:0;
+    border-bottom:1px solid var(--line);
+  }
+  .fix-row:last-child{ border-bottom:none; }
+  .fix-row > div{ padding:16px 18px; font-size:13.4px; }
+  .fix-row.head > div{
+    font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--dim); background: var(--panel);
+  }
+  .fix-row .bad{ color: color-mix(in srgb, var(--rose) 88%, var(--text)); }
+  .fix-row .bad s{ text-decoration-color: color-mix(in srgb, var(--rose) 70%, transparent); }
+  .fix-row .good{ color: color-mix(in srgb, var(--green) 86%, var(--text)); }
+  .fix-row .rule{ font-family:var(--mono); font-size:11.5px; color:var(--cyan); }
+
+  /* Bento */
+  .bento{ display:grid; grid-template-columns: repeat(6, 1fr); gap:14px; }
+  .bento .card{ min-height:170px; display:flex; flex-direction:column; }
+  .b-3{ grid-column: span 3; }
+  .b-2{ grid-column: span 2; }
+  .b-4{ grid-column: span 4; }
+  .b-6{ grid-column: span 6; }
+  .bento .ico{
+    width:36px; height:36px; border-radius:11px; display:grid; place-items:center; margin-bottom:14px;
+    background: color-mix(in srgb, var(--cyan) 12%, transparent);
+    color: var(--cyan); border:1px solid color-mix(in srgb, var(--cyan) 24%, transparent);
+  }
+  .bento .card:nth-child(2n) .ico{
+    background: color-mix(in srgb, var(--violet) 14%, transparent);
+    color: var(--violet); border-color: color-mix(in srgb, var(--violet) 28%, transparent);
+  }
+  .bento .card:nth-child(3n) .ico{
+    background: color-mix(in srgb, var(--amber) 14%, transparent);
+    color: var(--amber); border-color: color-mix(in srgb, var(--amber) 28%, transparent);
+  }
+  .bento ul{ margin:0; padding-left:16px; color:var(--muted); font-size:13px; }
+  .bento li{ margin-top:6px; }
+
+  /* 代码块 */
+  .code-card{
+    border:1px solid var(--line); border-radius:var(--radius); overflow:hidden;
+    background: color-mix(in srgb, #000 22%, var(--bg));
+  }
+  html[data-theme="light"] .code-card{ background: #0f172a; }
+  .code-head{
+    display:flex; align-items:center; gap:10px; padding:11px 14px; border-bottom:1px solid var(--line);
+    background: var(--panel);
+  }
+  .code-head .dots{ display:flex; gap:6px; }
+  .code-head .dots i{ width:9px; height:9px; border-radius:50%; background:var(--line-2); }
+  .code-head .file{ font-family:var(--mono); font-size:11.5px; color:var(--dim); }
+  .code-head .copy{
+    margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--muted);
+    border:1px solid var(--line); background:transparent; border-radius:7px; padding:5px 10px;
+    cursor:pointer; transition:.2s;
+  }
+  .code-head .copy:hover{ color:var(--text); border-color:var(--line-2); }
+  pre{
+    margin:0; padding:20px 18px; overflow-x:auto; font-size:12.9px; line-height:1.85;
+    color:#dbeafe;
+  }
+  pre .c{ color:#64748b; }
+  pre .k{ color:#67e8f9; }
+  pre .s{ color:#a5b4fc; }
+  pre .n{ color:#fbbf24; }
+
+  /* 结尾 CTA */
+  .closing{
+    margin: 40px 0 60px; border:1px solid var(--line); border-radius:24px; padding: 44px;
+    background:
+      radial-gradient(600px 240px at 15% 0%, color-mix(in srgb, var(--cyan) 16%, transparent), transparent 62%),
+      radial-gradient(500px 220px at 85% 100%, color-mix(in srgb, var(--violet) 18%, transparent), transparent 62%),
+      var(--panel);
+    display:flex; align-items:center; justify-content:space-between; gap:28px; flex-wrap:wrap;
+  }
+  .closing h2{ font-size: clamp(22px, 3vw, 32px); max-width: 24ch; }
+  .closing p{ color:var(--muted); font-size:14px; margin-top:10px; max-width: 46ch; }
+
+  footer{
+    border-top:1px solid var(--line); padding:28px 0 46px; color:var(--dim); font-size:12.5px;
+    display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  }
+  footer .links{ display:flex; gap:18px; }
+  footer a:hover{ color:var(--text); }
+
+  /* 动效 */
+  .reveal{ opacity:0; transform: translateY(18px); transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1); }
+  .reveal.in{ opacity:1; transform:none; }
+
+  /* ============ 响应式 ============ */
+  @media (max-width: 1000px){
+    .stats{ grid-template-columns: repeat(2, 1fr); }
+    .pains{ grid-template-columns: 1fr; }
+    .modes{ grid-template-columns: repeat(2, 1fr); }
+    .flow{ grid-template-columns: repeat(2, 1fr); gap:0 18px; }
+    .flow::before{ display:none; }
+    .step{ padding-top:0; padding-left:34px; padding-bottom:26px; }
+    .step .node{ top:3px; }
+    .bento{ grid-template-columns: repeat(4, 1fr); }
+    .b-3, .b-4{ grid-column: span 4; }
+    .b-2{ grid-column: span 2; }
+    .nav-links{ display:none; }
+  }
+  @media (max-width: 640px){
+    .wrap{ width: calc(100% - 28px); }
+    .hero{ padding-top:48px; }
+    section{ padding: 64px 0; }
+    .stats{ grid-template-columns: 1fr 1fr; gap:10px; }
+    .modes{ grid-template-columns: 1fr; }
+    .flow{ grid-template-columns: 1fr; }
+    .bento{ grid-template-columns: 1fr; }
+    .b-2, .b-3, .b-4, .b-6{ grid-column: span 1; }
+    .fix-row{ grid-template-columns: 1fr; }
+    .fix-row.head{ display:none; }
+    .fix-row > div{ padding:12px 14px; }
+    .fix-row > div:first-child{ background:var(--panel); font-weight:650; }
+    .closing{ padding:26px; border-radius:18px; }
+    .cta-row .hint{ display:none; }
+    footer{ flex-direction:column; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    html{ scroll-behavior:auto; }
+    .reveal{ opacity:1; transform:none; transition:none; }
+    .card:hover{ transform:none; }
+  }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#04121a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9.5 18 20 6.5"/></svg>
+      </span>
+      ai-bid-document
+    </a>
+    <nav class="nav-links" aria-label="页面导航">
+      <a href="#why">为什么重构</a>
+      <a href="#modes">工作模式</a>
+      <a href="#flow">六阶段</a>
+      <a href="#fixes">修复清单</a>
+      <a href="#features">新能力</a>
+      <a href="#start">快速开始</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" id="themeBtn" aria-label="切换主题" title="切换主题">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+      </button>
+      <a class="btn" href="https://github.com/Jackon-Li/ai-bid-document" target="_blank" rel="noopener">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.9 1.2 1.9 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <!-- ================= HERO ================= -->
+  <div class="hero wrap">
+    <span class="pill reveal"><span class="dot"></span> Release v2.0.1 · 2026-10-18</span>
+
+    <h1 class="title reveal" style="--d:.05s">
+      把标书<br><span class="grad">当账本写</span>
+    </h1>
+
+    <p class="lede reveal" style="--d:.1s">
+      投标失败通常不是因为写得不好，而是因为 <strong>漏了一条要求</strong>、<strong>编了一个参数</strong>、
+      <strong>承诺了一句不该承诺的话</strong>。v2 把这三种事故变成三门可被机器拦住的闸机：
+      条目化台账、零发明标记、双轨核查。
+    </p>
+
+    <div class="cta-row reveal" style="--d:.15s">
+      <a class="btn btn-primary" href="#start">
+        三分钟跑通
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+      </a>
+      <a class="btn" href="#fixes">看看修了什么</a>
+      <span class="hint">python -m unittest discover -s tests  →  23 passed</span>
+    </div>
+
+    <div class="stats reveal" style="--d:.2s">
+      <div class="stat"><b>12</b><span>项确定性检查</span><small>RULES</small></div>
+      <div class="stat"><b>4</b><span>种工作模式</span><small>ROUTING</small></div>
+      <div class="stat"><b>23</b><span>项回归测试</span><small>TESTS</small></div>
+      <div class="stat"><b>8</b><span>件交付物</span><small>DELIVERABLES</small></div>
+    </div>
+  </div>
+
+  <!-- ================= 为什么重构 ================= -->
+  <section id="why">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="reveal">
+          <div class="kicker">Why v2</div>
+          <h2 class="h2">v1 能用，但会在三个地方<br>让你误以为"已经做完了"</h2>
+          <p class="sub">这三个问题都不是"功能不够"，而是"通过得太容易"。看上去都绿了，实际上什么都没查。</p>
+        </div>
+      </div>
+
+      <div class="pains">
+        <article class="card pain reveal">
+          <span class="tag">BLIND SPOT 01</span>
+          <h3>声明式覆盖</h3>
+          <p>章节头写了 <code>&gt; 覆盖条目：R-012</code>，正文一个字没写。v1 的覆盖率算 100%，报告全绿。</p>
+          <div class="fix">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9.5 18 20 6.5"/></svg>
+            <span>v2 区分<b>声明级</b>与<b>实质级</b>覆盖，只在声明出现的条目直接 <code>COV-02</code> 阻断。</span>
+          </div>
+        </article>
+
+        <article class="card pain reveal" style="--d:.06s">
+          <span class="tag">BLIND SPOT 02</span>
+          <h3>正则失配的假通过</h3>
+          <p>覆盖率用 <code>\bR-\d{3,}\b</code>。中文算 <code>\w</code>，"条目R-001"匹配不到——覆盖率可能恒为 0 或恒为 100。</p>
+          <div class="fix">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9.5 18 20 6.5"/></svg>
+            <span>改成 lookaround，并补 <code>T01</code> 回归用例锁死这个行为。</span>
+          </div>
+        </article>
+
+        <article class="card pain reveal" style="--d:.12s">
+          <span class="tag">BLIND SPOT 03</span>
+          <h3>静默降级</h3>
+          <p>没装 python-docx 时返回 <code>[跳过]</code> 字符串，它被当作正文参与扫描。报告"正常"，数据全错。</p>
+          <div class="fix">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9.5 18 20 6.5"/></svg>
+            <span>改为显式 <code>InputError</code> + 退出码 2：宁可失败，不给假绿。</span>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 模式 ================= -->
+  <section id="modes">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="reveal">
+          <div class="kicker">Routing</div>
+          <h2 class="h2">先路由，再执行</h2>
+          <p class="sub">v1 不管你问什么，都跑六阶段。一句话的请求也要走完全流程——慢，且容易在无关步骤上跑偏。v2 先判断你要的是哪一种活。</p>
+        </div>
+      </div>
+
+      <div class="modes">
+        <article class="card mode reveal">
+          <div class="id">M1 · 读标 <i>S0 → S1</i></div>
+          <h3>先把文件读懂</h3>
+          <p class="q">"这份招标文件讲了什么？红线在哪？"</p>
+          <div class="out">交付：<b>台账 + 废标红线 + 评分点表</b></div>
+        </article>
+        <article class="card mode reveal" style="--d:.05s">
+          <div class="id">M2 · 编标 <i>S0 → S5</i></div>
+          <h3>出成稿</h3>
+          <p class="q">"帮我写技术标 / 商务标。"</p>
+          <div class="out">交付：<b>八件套</b></div>
+        </article>
+        <article class="card mode reveal" style="--d:.1s">
+          <div class="id">M3 · 体检 <i>S4 双轨</i></div>
+          <h3>会不会废标</h3>
+          <p class="q">"复核一下这版有没有坑。"</p>
+          <div class="out">交付：<b>核查报告 + 整改清单</b></div>
+        </article>
+        <article class="card mode reveal" style="--d:.15s">
+          <div class="id">M4 · 定点 <i>单点</i></div>
+          <h3>就问一句</h3>
+          <p class="q">"这句话能不能写？算不算负偏离？"</p>
+          <div class="out">交付：<b>结论 + 原文依据</b></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 流程 ================= -->
+  <section id="flow">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="reveal">
+          <div class="kicker">Pipeline</div>
+          <h2 class="h2">六阶段，四个闸机</h2>
+          <p class="sub">与 v1 最大的差别不是"多了几步"，而是每一步都有<strong>失败动作</strong>：门禁不过时，正确做法是停下来说明缺什么，而不是继续往下写。</p>
+        </div>
+      </div>
+
+      <div class="flow reveal">
+        <div class="step gate">
+          <span class="node"></span>
+          <div class="code">S0</div>
+          <h4>建档</h4>
+          <p>收齐 I1–I8，跑资格符合性自检：只列缺口。</p>
+          <span class="gate-badge">G0 · 无文件即停</span>
+        </div>
+        <div class="step gate">
+          <span class="node"></span>
+          <div class="code">S1</div>
+          <h4>解析</h4>
+          <p>条目化 + 去重 + 溯源行号，产出三个基准数字。</p>
+          <span class="gate-badge">G1 · 量级不符即补抽</span>
+        </div>
+        <div class="step">
+          <span class="node"></span>
+          <div class="code">S1.5</div>
+          <h4>人工修订</h4>
+          <p>修 mandatory / strength，补 owner，整理澄清函。</p>
+        </div>
+        <div class="step gate">
+          <span class="node"></span>
+          <div class="code">S2</div>
+          <h4>映射</h4>
+          <p>每条要求有主应答章节；评分点有落点与证据。</p>
+          <span class="gate-badge">G2 · 硬门禁</span>
+        </div>
+        <div class="step">
+          <span class="node"></span>
+          <div class="code">S3</div>
+          <h4>撰写</h4>
+          <p>覆盖声明 + 首段逐字回应 + 承诺分级。</p>
+        </div>
+        <div class="step gate">
+          <span class="node"></span>
+          <div class="code">S4–S5</div>
+          <h4>核查与交付</h4>
+          <p>脚本管形式，清单管实质；八件套齐备才算交付。</p>
+          <span class="gate-badge">G3 · BLOCKER 清零</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 修复 ================= -->
+  <section id="fixes">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="reveal">
+          <div class="kicker">Fixed</div>
+          <h2 class="h2">九个缺陷，每一个都<br>对应一条测试</h2>
+          <p class="sub">不是"优化了一下"，而是可以复现的 bug：给旧脚本同一个输入，它会给出错误的"通过"。</p>
+        </div>
+      </div>
+
+      <div class="fix-table reveal">
+        <div class="fix-row head">
+          <div>v1 的行为</div>
+          <div>真实后果</div>
+          <div>v2</div>
+        </div>
+        <div class="fix-row">
+          <div class="bad"><s>覆盖声明行也算"已引用"</s></div>
+          <div>章节头写编号即通过，正文空着也报 100%</div>
+          <div class="good"><span class="rule">COV-02</span> 仅声明未展开 → 阻断</div>
+        </div>
+        <div class="fix-row">
+          <div class="bad"><s><code>\bR-\d{3,}\b</code> 匹配条目编号</s></div>
+          <div>中文语境下失配，覆盖率可能恒为 0</div>
+          <div class="good">lookaround 改写 + <span class="rule">T01</span></div>
+        </div>
+        <div class="fix-row">
+          <div class="bad"><s>docx 缺依赖返回 [跳过]</s></div>
+          <div>占位字符串被当正文扫描，报告全错</div>
+          <div class="good">显式报错，退出码 <span class="rule">2</span></div>
+        </div>
+        <div class="fix-row">
+          <div class="bad"><s>章节编号只认 Markdown <code>#</code></s></div>
+          <div>docx 转文本没有 #，检查恒为空</div>
+          <div class="good">支持 第X章 / # N. / N、 三种体例</div>
+        </div>
+        <div class="fix-row">
+          <div class="bad"><s>类型判定"章节优先"</s></div>
+          <div>资格、格式条款被批量误判，owner 派错人</div>
+          <div class="good">句内优先、章节兜底 + 强信号章节</div>
+        </div>
+        <div class="fix-row">
+          <div class="bad"><s>无去重</s></div>
+          <div>同一要求写三遍算 3 条必答，分母虚高</div>
+          <div class="good"><span class="rule">dup_of</span> 三类重复合并</div>
+        </div>
+        <div class="fix-row">
+          <div class="bad"><s>source_quote 与正文同源</s></div>
+          <div>号称溯源，其实无法定位原文位置</div>
+          <div class="good"><span class="rule">line_no</span> + <span class="rule">source_ver</span></div>
+        </div>
+        <div class="fix-row">
+          <div class="bad"><s>输入错误退出码 1</s></div>
+          <div>与文档不符，CI 把"用错参数"判成"不合格"</div>
+          <div class="good">统一 <span class="rule">0 / 1 / 2</span> 语义</div>
+        </div>
+        <div class="fix-row">
+          <div class="bad"><s>映射表 chapter 为空不报错</s></div>
+          <div>"有安排没落点"，仍然算通过</div>
+          <div class="good"><span class="rule">MAP-02</span> 阻断</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 新能力 ================= -->
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="reveal">
+          <div class="kicker">New</div>
+          <h2 class="h2">六块新能力，<br>都指向同一个问题：能不能核对</h2>
+          <p class="sub">投标这件事，说不清就等于没做。新增能力全部以"可被第三方复核"为标准设计。</p>
+        </div>
+      </div>
+
+      <div class="bento">
+        <article class="card b-3 reveal">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+          </div>
+          <h3>评分作战表</h3>
+          <p>把评分办法拆成"得分点 → 分值 → 证据 → 章节 → 把握度"，一张表回答三个问题：哪些分确定拿不到、哪些分还没落点、离满分差多远。</p>
+          <ul>
+            <li>无承载章节 → <code>SCORE-01</code> 阻断</li>
+            <li>证据为空 → <code>SCORE-02</code> 阻断</li>
+            <li>可达分 &lt; 70% → 竞争力提示</li>
+          </ul>
+        </article>
+
+        <article class="card b-3 reveal" style="--d:.06s">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v5h5"/><path d="M12 8v4l3 2"/></svg>
+          </div>
+          <h3>复用污染扫描</h3>
+          <p>比"凭空编造"更危险的编造变体：旧项目名、旧编号、内部用语没删干净。读起来通顺，直到资格性审查被废标。</p>
+          <ul>
+            <li>旧编号 → <code>POLL-01</code> 阻断</li>
+            <li>旧项目名 → <code>POLL-02</code> 警告</li>
+            <li>"按上次标书" → <code>POLL-03</code> 阻断</li>
+          </ul>
+        </article>
+
+        <article class="card b-2 reveal">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+          </div>
+          <h3>机器可读报告</h3>
+          <p><code>validate.json</code>：每条发现带 id、规则号、定位、证据、整改建议，直接接 CI 与台账。</p>
+        </article>
+
+        <article class="card b-2 reveal" style="--d:.06s">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 7l7-4 7 4v10l-7 4-7-4z"/></svg>
+          </div>
+          <h3>强制强度五级</h3>
+          <p>禁止 / 必须 / 应 / 宜 / 可，替代 Y/N 二分——整改时先改哪条，不再靠感觉。</p>
+        </article>
+
+        <article class="card b-2 reveal" style="--d:.12s">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          </div>
+          <h3>溯源三件套</h3>
+          <p>原文摘录 + 行号 + 版本标记。随机抽三条，30 秒内找不到原文，就是溯源不合格。</p>
+        </article>
+
+        <article class="card b-6 reveal">
+          <div class="ico">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18.5" cy="12" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+          </div>
+          <h3>交付契约与异常边界</h3>
+          <p>固定目录（<code>00-输入</code> 到 <code>50-交付</code>）、命名规则、Issue ID（<code>F-001</code>）、十节核查报告结构；外加 14 类真实异常的处理口径：扫描件、加密文件、超长标书、多版本补遗、联合体、分包、电子标 CA、涉密项目…… 每一类都明确"怎么降级、怎么标注、什么情况下必须停"。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 快速开始 ================= -->
+  <section id="start">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="reveal">
+          <div class="kicker">Quick start</div>
+          <h2 class="h2">三步，全部零依赖</h2>
+          <p class="sub">只要 Python 3.8+。读 .docx 才需要可选的 python-docx，不装也能跑 .md / .txt。</p>
+        </div>
+      </div>
+
+      <div class="reveal" style="display:grid; gap:14px;">
+        <div class="code-card">
+          <div class="code-head">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span class="file">1 · 抽取要求台账</span>
+            <button class="copy" data-copy="python scripts/extract_requirements.py --input 招标文件.md --output requirements.csv --ver v1">复制</button>
+          </div>
+          <pre><span class="c"># 一条命令把招标文件变成可勾选的台账</span>
+python scripts/extract_requirements.py <span class="k">--input</span> 招标文件.md <span class="k">--output</span> requirements.csv <span class="k">--ver</span> v1
+
+<span class="c"># 输出：原始条目 22 / 去重合并 3 / 主条目 19 / 必答 12 / 需澄清 2</span></pre>
+        </div>
+
+        <div class="code-card">
+          <div class="code-head">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span class="file">2 · 交付前双轨核查</span>
+            <button class="copy" data-copy='python scripts/validate_bid.py --bid ./20-正文 --req requirements.csv --map outline-map.csv --score scoring-matrix.csv --project "本项目名称" --project-no "KM-2026-1234" --report validate.json'>复制</button>
+          </div>
+          <pre><span class="c"># exit 0 = 通过；1 = 有阻断项；2 = 输入有问题</span>
+python scripts/validate_bid.py <span class="k">--bid</span> ./20-正文 <span class="k">--req</span> requirements.csv \
+  <span class="k">--map</span> outline-map.csv <span class="k">--score</span> scoring-matrix.csv \
+  <span class="k">--project</span> <span class="s">"本项目名称"</span> <span class="k">--project-no</span> <span class="s">"KM-2026-1234"</span> \
+  <span class="k">--report</span> validate.json</pre>
+        </div>
+
+        <div class="code-card">
+          <div class="code-head">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span class="file">3 · 验证脚本在你机器上行为一致</span>
+            <button class="copy" data-copy="python -m unittest discover -s tests -v">复制</button>
+          </div>
+          <pre>python -m unittest discover <span class="k">-s</span> tests <span class="k">-v</span>
+
+<span class="c">...</span>
+Ran <span class="n">23</span> tests in <span class="n">1.7</span>s
+<span class="c">OK</span></pre>
+        </div>
+      </div>
+
+      <div class="closing reveal">
+        <div>
+          <h2>投标文件是要约文件。<br>写进去的每个数字，都是义务。</h2>
+          <p>所以这个技能不教你"怎么写得更漂亮"，它只保证一件事：<strong>你说已响应的每一条，都能被指认、被核对、被复现。</strong></p>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <a class="btn btn-primary" href="https://github.com/Jackon-Li/ai-bid-document/releases/tag/v2.0.1" target="_blank" rel="noopener">下载 v2.0.1</a>
+          <a class="btn" href="https://github.com/Jackon-Li/ai-bid-document" target="_blank" rel="noopener">查看源码</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <div>© 2026 ai-bid-document · MIT License · 本技能不构成法律或商务建议</div>
+  <div class="links">
+    <a href="https://github.com/Jackon-Li/ai-bid-document/blob/main/README.md" target="_blank" rel="noopener">文档</a>
+    <a href="https://github.com/Jackon-Li/ai-bid-document/blob/main/CHANGELOG.md" target="_blank" rel="noopener">变更记录</a>
+    <a href="https://github.com/Jackon-Li/ai-bid-document/issues" target="_blank" rel="noopener">反馈</a>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // 主题切换（记住选择）
+  var root = document.documentElement;
+  var btn = document.getElementById("themeBtn");
+  var saved = null;
+  try { saved = localStorage.getItem("abd-theme"); } catch (e) {}
+  if (saved === "light") root.setAttribute("data-theme", "light");
+  btn.addEventListener("click", function () {
+    var next = root.getAttribute("data-theme") === "light" ? "dark" : "light";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("abd-theme", next); } catch (e) {}
+  });
+
+  // 滚动进度
+  var bar = document.getElementById("progress");
+  function onScroll() {
+    var h = document.documentElement;
+    var max = h.scrollHeight - h.clientHeight;
+    bar.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + "%";
+  }
+  document.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+
+  // 渐入动画
+  var items = document.querySelectorAll(".reveal");
+  if ("IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) {
+          var el = en.target;
+          var d = el.style.getPropertyValue("--d") || "0s";
+          el.style.transitionDelay = d;
+          el.classList.add("in");
+          io.unobserve(el);
+        }
+      });
+    }, { threshold: 0.14, rootMargin: "0px 0px -40px 0px" });
+    items.forEach(function (el) { io.observe(el); });
+  } else {
+    items.forEach(function (el) { el.classList.add("in"); });
+  }
+
+  // 复制
+  document.querySelectorAll(".copy").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var text = b.getAttribute("data-copy");
+      var done = function () {
+        var old = b.textContent;
+        b.textContent = "已复制";
+        setTimeout(function () { b.textContent = old; }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        document.body.removeChild(ta); done();
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

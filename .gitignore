@@ -1,0 +1,24 @@
+﻿# ---------------- 环境与缓存 ----------------
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+
+# ---------------- 密钥（绝不入库） ----------------
+.env.local
+.env
+*.key
+
+# ---------------- 运行产物 ----------------
+# 每次运行的台账、门禁、比对结果都在这里，属于产物而非源码
+out/
+logs/
+workbench/logs/
+
+# 招标/投标 PDF 与本地数据库：客户资料，不入库
+data/
+
+# 由脚本生成的报告（template.html 保留，index.html 是产物）
+web/index.html
+.venv-paddle/

@@ -1,0 +1,57 @@
+name: Release
+
+# 触发方式：
+#   1) 修改 VERSION 并推送到 main（推荐：版本号即发布信号）
+#   2) 手动 workflow_dispatch
+# 行为：读取 VERSION → 打 tag → 用 docs/release-notes-<tag>.md 作为 Release 正文
+# 依赖：仓库 Actions 权限 Settings → Actions → General → Workflow permissions
+#       需为 "Read and write permissions"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "VERSION"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: ver
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          NOTES="docs/release-notes-v$VERSION.md"
+          if [ -f "$NOTES" ]; then
+            echo "notes=$NOTES" >> "$GITHUB_OUTPUT"
+          else
+            echo "notes=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: "ai-bid-document ${{ steps.ver.outputs.tag }} · 把标书当账本写"
+          body_path: ${{ steps.ver.outputs.notes }}
+          draft: false
+          prerelease: false
+          make_latest: true
+          generate_release_notes: ${{ steps.ver.outputs.notes == '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run regression tests before publishing
+        run: python -m unittest discover -s tests -v
+        continue-on-error: true

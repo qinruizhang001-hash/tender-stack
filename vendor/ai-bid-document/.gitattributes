@@ -1,0 +1,9 @@
+# 统一行尾，避免 Windows/macOS/Linux 混用产生无意义 diff
+* text=auto eol=lf
+
+*.md  text eol=lf
+*.py  text eol=lf
+*.txt text eol=lf
+
+# CSV 台账含 UTF-8 BOM，按二进制原样保留，禁止 git 改写
+*.csv -text
