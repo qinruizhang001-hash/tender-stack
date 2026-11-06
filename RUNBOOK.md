@@ -656,3 +656,98 @@ python scripts/eval_chunks.py contract/gold_clauses_20.json out/req.jsonl
 python scripts/gold_gate.py                 # recall ≥ 0.90 才通过，退出码 1 拦截
 python scripts/gold_gate.py --threshold 0.85
 ```
+
+## 19. 第四轮：试点商用缺口
+
+### 19.1 开关矩阵（默认全关）
+
+| 开关 | 默认 | 作用 | 依赖缺失时 |
+|---|---|---|---|
+| `TENDER_LAYOUT` | `0` | 版面检测（toc/table 框） | `stats.layout_fallback="not_installed"`，走规则 |
+| `TENDER_TABLE_MODEL` | `0` | 表结构校验列对齐 | 返回 None，保持规则合并结论 |
+| `TENDER_VLM_OCR` | `0` | 难页 VLM OCR | 不启用，RapidOCR 兜底 |
+
+### 19.2 表行进 requirement
+
+条款型表行（编号 / ★ / 必须 / 否决 / 废标 / 勾选框 □■☑）独立成条：
+
+- `kind="table_row"`，带 `table_header`、`row_index`、`table_header`；
+- 纯数字矩阵（报价表）不拆，整表留作 section 证据；
+- `display_text = "{number}. {text}"`（无编号时等于 `text`）。
+
+### 19.3 多文档金标门禁
+
+```bash
+python scripts/gold_gate.py          # contract/gold/index.json：两份标书
+```
+
+| 阈值 | 默认 |
+|---|---|
+| 总 recall（加权） | 0.90 |
+| 最差单文档 recall | 0.85 |
+| 风险条款漏检（废标/否决/必须/★） | 直接失败 |
+
+### 19.4 健康检查
+
+```bash
+python scripts/healthcheck.py        # OCR 预热失败 → 退出码 1
+```
+
+## 20. 案例知识沉淀与受控迭代
+
+分层职责见 `docs/LAYERS.md`；卡片 schema 见 `kb/schema.json`。
+
+### 20.1 吸收（自动只写 inbox）
+
+```bash
+python -m scripts.kb_absorb \
+  --export out/req.jsonl --gold contract/gold/huairou_service.json \
+  --doc-type service --pdf data/tenders/xxx.pdf --out kb/inbox
+```
+
+输出（含 `kb_absorbed_count`）：
+
+```json
+{"absorbed": 11, "kb_absorbed_count": 11, "candidates": 11, "duplicates": 0, "sealed": false,
+ "source_doc_hash": "1a4e42cf..."}
+```
+
+来源：金标 miss（covered<0.8）+ `quality=low` 的 requirement。卡片状态一律 `draft`。
+
+### 20.2 检索（补偿层只读）
+
+```bash
+python -m scripts.kb_query --doc-type service --keywords 保证金
+```
+
+开关 `TENDER_KB_RETRIEVE`（默认 1）；索引缺失/损坏时返回 `items: []` 并给 `fallback`，不影响主流程。
+
+### 20.3 受控晋升（唯一进化入口）
+
+```bash
+python -m scripts.kb_promote --card <case_id> --dry-run     # 生成 kb/proposed/
+python -m scripts.kb_promote --card <case_id> --approve --by 张三
+python -m scripts.kb_promote --card <case_id> --reject --reason "误报"
+```
+
+硬性规则：
+
+- 必须有 `linked_test`，且该测试函数在 `tests/` 里存在，否则拒绝；
+- 默认跑 `gold_gate`（`--no-gate` 仅调试用）；
+- 金标类批准后写 `contract/gold/absorbed/`，**不自动加入 index.json**，需人工决定是否参与门禁；
+- 规则类只生成 `kb/proposed/*.json` 草稿，**不改 layout_parse**。
+
+### 20.4 sealed
+
+`kb/sealed/index.json` 里的 `doc_hashes` 禁止被自动吸收或晋升改写。
+
+### 20.5 sealed 基线与回归
+
+`kb/sealed/index.json` 的 `gold_files` 指向 sealed 金标子集（当前两份各 10 条）：
+
+```bash
+python -m scripts.kb_sealed --init    # 写基线 kb/sealed/baseline.json
+python -m scripts.kb_sealed --check   # 与基线比较，下降退出码 1
+```
+
+`kb_promote --approve` 会先算 sealed recall，低于基线直接拒绝（`stage=sealed_regression`）。

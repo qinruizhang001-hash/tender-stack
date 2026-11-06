@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# LAYER: load-bearing
 # -*- coding: utf-8 -*-
 """ocr_backend.py — OCR 后端选择：PaddleOCR（侧车）> RapidOCR（内置）。
 

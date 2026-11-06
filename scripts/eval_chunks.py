@@ -54,20 +54,27 @@ def load_gold(path: Path) -> list[dict]:
     return [item for item in items if normalise(item["text"])]
 
 
-def load_texts(path: Path) -> list[str]:
-    """requirement 文本 + 「编号+正文」两种形态，编号本身也是条款的一部分。"""
-    texts: list[str] = []
+def load_corpus(path: Path) -> dict[str, list[str]]:
+    """分别收集正文 / display_text / 编号+正文，用于区分 exact_body 与 exact_display。"""
+    body_texts: list[str] = []
+    display_texts: list[str] = []
+    all_texts: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         record = json.loads(line)
         body = normalise(record.get("text", ""))
         if body:
-            texts.append(body)
+            body_texts.append(body)
+            all_texts.append(body)
+        display = normalise(record.get("display_text", ""))
+        if display:
+            display_texts.append(display)
+            all_texts.append(display)
         number = normalise(record.get("number", ""))
         if number and body:
-            texts.append(number + body)
-    return texts
+            all_texts.append(number + body)
+    return {"body": body_texts, "display": display_texts, "all": all_texts}
 
 
 def coverage(needle: str, texts: list[str]) -> float:
@@ -81,19 +88,22 @@ def coverage(needle: str, texts: list[str]) -> float:
 
 def evaluate(gold_path: str | Path, chunks_path: str | Path) -> dict:
     gold = load_gold(Path(gold_path))
-    texts = load_texts(Path(chunks_path))
+    corpus = load_corpus(Path(chunks_path))
+    texts = corpus["all"]
     if not gold:
         return {"total": 0, "exact": 0, "covered": 0, "recall": None, "miss": [], "note": "金标为空，跳过"}
 
-    exact = covered = 0
+    exact = exact_display = covered = 0
     miss: list[dict] = []
     details: list[dict] = []
     for item in gold:
         needle = normalise(item["text"])
-        is_exact = any(needle in text for text in texts)
+        is_exact = any(needle in text for text in corpus["body"])
+        is_exact_display = any(needle in text for text in corpus["display"])
         ratio = 1.0 if is_exact else coverage(needle, texts)
         is_covered = ratio >= COVERAGE_THRESHOLD
         exact += int(is_exact)
+        exact_display += int(is_exact_display)
         covered += int(is_covered)
         details.append(
             {"id": item["id"], "page": item.get("page"), "exact": is_exact, "coverage": round(ratio, 3)}
@@ -106,8 +116,10 @@ def evaluate(gold_path: str | Path, chunks_path: str | Path) -> dict:
     return {
         "total": len(gold),
         "exact": exact,
+        "exact_display": exact_display,
         "covered": covered,
         "exact_rate": round(exact / len(gold), 3),
+        "exact_display_rate": round(exact_display / len(gold), 3),
         "recall": round(covered / len(gold), 3),
         "threshold": COVERAGE_THRESHOLD,
         "miss": miss,

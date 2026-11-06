@@ -241,3 +241,49 @@ def test_正文页不被误判目录(tmp_path):
     )
     _, stats = parse_sections(path)
     assert stats["toc_pages"] == []
+
+def test_表行条款进_requirement():
+    from layout_parse import extract_requirements
+
+    chunks = [{
+        "section": "第三章 > 评标",
+        "text": "| 条款号 | 内容 |\n| --- | --- |",
+        "page": 8,
+        "pages": [8],
+        "tables": [[["条款号", "内容"], ["12.8.2", "□无 □有，投标保证金不予退还"]],
+                   [["序号", "金额"], ["1", "30000"], ["2", "50000"]]],
+    }]
+    items = extract_requirements(chunks)
+    rows = [item for item in items if item["kind"] == "table_row"]
+    assert rows, "勾选行应进 requirement"
+    assert rows[0]["number"] == "12.8.2"
+    assert "□" in rows[0]["text"]
+    assert rows[0]["display_text"].startswith("12.8.2. ")
+    assert all(item["kind"] != "table_row" or "30000" not in item["text"] for item in items), "纯数字矩阵不拆条"
+
+
+def test_行尾编号切成独立条():
+    from layout_parse import extract_requirements
+
+    chunks = [{"section": "第一章", "text": "投标人应当提供近三个月社保缴纳证明，详见条款 1.", "page": 2, "pages": [2]}]
+    items = extract_requirements(chunks)
+    assert any(item["number"] == "1" for item in items), items
+
+
+def test_开关默认关闭(monkeypatch):
+    import sidecar_models
+
+    monkeypatch.delenv("TENDER_LAYOUT", raising=False)
+    monkeypatch.delenv("TENDER_TABLE_MODEL", raising=False)
+    monkeypatch.delenv("TENDER_VLM_OCR", raising=False)
+    status = sidecar_models.status_summary()
+    assert status["layout"]["enabled"] is False
+    assert status["table"]["enabled"] is False
+
+
+def test_开启版面开关但缺依赖时回退(tmp_path, monkeypatch):
+    monkeypatch.setenv("TENDER_LAYOUT", "1")
+    path = _pdf(tmp_path, [[("第一章 投标邀请", 18, True), ("投标人须提供营业执照。", 12, False)]])
+    _, stats = parse_sections(path)
+    assert stats["layout"]["enabled"] is True
+    assert stats["layout_fallback"] == "not_installed"

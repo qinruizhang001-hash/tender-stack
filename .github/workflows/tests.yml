@@ -32,3 +32,7 @@ jobs:
 
       - name: 数值比对自测
         run: python adapter/numeric_check.py
+
+      - name: 条款金标门禁（有标书才跑）
+        if: ${{ hashFiles('data/tenders/*.pdf') != '' }}
+        run: python scripts/gold_gate.py

@@ -1,0 +1,21 @@
+{
+  "_help": {
+    "doc_hashes": "sealed 文档的 sha256 列表；命中的文档禁止被 kb_absorb 吸收、禁止被 kb_promote 晋升。用 python -c \"import adapter.kb as kb; print(kb.file_hash('路径.pdf'))\" 生成。",
+    "gold_files": "sealed 金标子集：[{\"pdf\": \"data/tenders/x.pdf\", \"gold\": \"contract/gold/sealed/x.json\"}]。kb_promote --approve 时用它算晋升前后的 sealed recall，下降则拒绝；为空时 _sealed_recall() 返回 None，这道防线不生效。",
+    "note": "自由文本说明，不参与逻辑。"
+  },
+  "doc_hashes": [
+    "4eb0b7bd1848eef4a3bb6d55f44caf7b5206c196e8f5775837a543b3a97c7cac"
+  ],
+  "gold_files": [
+    {
+      "pdf": "data/tenders/宁夏医科大-体外心肺支持设备-公开招标文件.pdf",
+      "gold": "contract/gold/sealed/ningxia_10.json"
+    },
+    {
+      "pdf": "data/tenders/北京怀柔-公园绿地养护-公开招标文件.pdf",
+      "gold": "contract/gold/sealed/huairou_10.json"
+    }
+  ],
+  "note": "宁夏医科大（货物类）已 sealed；怀柔（服务类）同时用于 train 与 sealed 子集，晋升时看 sealed 是否回退"
+}

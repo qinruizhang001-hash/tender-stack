@@ -1,0 +1,12 @@
+[
+  {
+    "doc": "huairou_service",
+    "pdf": "data/tenders/北京怀柔-公园绿地养护-公开招标文件.pdf",
+    "gold": "contract/gold/huairou_service.json"
+  },
+  {
+    "doc": "ningxia_goods",
+    "pdf": "data/tenders/宁夏医科大-体外心肺支持设备-公开招标文件.pdf",
+    "gold": "contract/gold/ningxia_goods.json"
+  }
+]

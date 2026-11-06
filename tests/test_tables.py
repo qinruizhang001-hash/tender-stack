@@ -298,4 +298,18 @@ def test_续表标记可合并(tmp_path):
     assert _table_count(body) == 1, f"带「续表」标记应合并：{body}"
     assert "医疗" in body
 
+def test_隔短注释的续表可合并(tmp_path):
+    """上表 | 短注释(<80字) | 下表：允许跨一个短文本合并。"""
+    doc = fitz.open()
+    _table_page(doc, [("序号", "项目", "金额"), ("1", "社保", "3万"), ("2", "纳税", "4万")])
+    note = doc.new_page(width=595, height=842)
+    note.insert_text((80, 100), "注：下表为本表续页。", fontname="china-s", fontsize=11)
+    _table_page(doc, [("3", "工伤", "5万"), ("4", "生育", "6万")])
+    path = tmp_path / "bridge.pdf"
+    doc.save(path)
+    doc.close()
 
+    chunks, _ = chunk_pdf(path)
+    body = "\n".join(chunk["text"] for chunk in chunks if chunk.get("table"))
+    assert _table_count(body) == 1, f"短注释后的续表应合并：{body}"
+    assert "生育" in body

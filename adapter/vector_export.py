@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# LAYER: load-bearing
 # -*- coding: utf-8 -*-
 """vector_export.py — 把切块结果导出成向量库入库用的 JSONL。
 
@@ -10,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,12 +23,39 @@ def _write(path: Path, rows: list[dict]) -> None:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def export_chunks(source: str | Path, target: str | Path, level: str = "requirement") -> dict:
+def _resolve_gold(source: Path) -> Path | None:
+    """按 PDF 路径在 contract/gold/index.json 里找对应金标。"""
+    index = Path(__file__).resolve().parent.parent / "contract" / "gold" / "index.json"
+    if not index.exists():
+        return None
+    try:
+        entries = json.loads(index.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    root = index.parent.parent.parent
+    for entry in entries:
+        if (root / entry["pdf"]).resolve() == source.resolve():
+            return root / entry["gold"]
+    return None
+
+
+def export_chunks(source: str | Path, target: str | Path, level: str = "requirement", absorb: bool | None = None) -> dict:
     from bid_chunker import chunk_pdf
     from layout_parse import extract_requirements
 
+    import hashlib
+
     source, target = Path(source), Path(target)
     chunks, stats = chunk_pdf(source)
+    source_sha256 = ""
+    try:
+        digest = hashlib.sha256()
+        with source.open("rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(block)
+        source_sha256 = digest.hexdigest()
+    except OSError:
+        source_sha256 = ""
 
     sections = []
     for index, chunk in enumerate(chunks):
@@ -54,13 +83,18 @@ def export_chunks(source: str | Path, target: str | Path, level: str = "requirem
             {
                 "id": item["id"],
                 "text": item["text"],
+                "display_text": item.get("display_text") or item["text"],
+                "kind": item.get("kind", "text"),
                 "number": item["number"],
+                "table_header": item.get("table_header", []),
+                "row_index": item.get("row_index", 0),
                 "section": item["section"],
                 "page": item["page"],
                 "pages": item["pages"],
                 "quality": item.get("quality", "ok"),
                 "quality_reason": item.get("quality_reason", ""),
                 "source": source.name,
+                "source_sha256": source_sha256,
                 "chars": len(item["text"]),
             }
         )
@@ -77,19 +111,51 @@ def export_chunks(source: str | Path, target: str | Path, level: str = "requirem
     else:
         _write(sections_path, sections)
 
+    # KB 吸收：默认开（TENDER_KB_ABSORB），失败只记 fallback，不影响导出
+    kb_stats: dict = {}
+    want_absorb = absorb
+    if want_absorb is None:
+        want_absorb = (os.environ.get("TENDER_KB_ABSORB") or "1").strip() not in {"0", "false", "no"}
+    if want_absorb:
+        try:
+            import sys as _sys
+
+            _sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from kb import absorb as kb_absorb
+
+            gold = _resolve_gold(source)
+            if gold and gold.exists():
+                kb_stats = kb_absorb(target, gold, source_pdf=source)
+            else:
+                kb_stats = {"absorbed": 0, "kb_fallback": "gold_not_found"}
+        except Exception as error:  # noqa: BLE001
+            kb_stats = {"absorbed": 0, "kb_fallback": f"{type(error).__name__}: {error}"}
+
     fallbacks = stats.get("ocr_fallback") or []
     return {
         "level": level,
         "requirements": len(requirements),
+        "table_rows": sum(1 for row in requirements if row.get("kind") == "table_row"),
         "sections": len(sections),
         "table_sections": sum(1 for row in sections if row["has_table"]),
         "low_quality": sum(1 for row in rows if row.get("quality") == "low"),
         "chars": sum(row["chars"] for row in rows),
+        "source_sha256": source_sha256,
         "backend": stats.get("backend") or stats.get("mode"),
         "toc_pages": stats.get("toc_pages") or [],
         "table_suspect": stats.get("table_suspect", 0),
         "ocr_fallback": fallbacks[:5],
         "ocr_fallback_count": len(fallbacks),
+        "kb_absorbed_count": kb_stats.get("absorbed", 0),
+        "kb_fallback": kb_stats.get("kb_fallback", ""),
+        "kb_sealed": kb_stats.get("sealed", False),
+        "layer_calls": {
+            "text": sum(1 for row in requirements if row.get("kind") == "text"),
+            "table_row": sum(1 for row in requirements if row.get("kind") == "table_row"),
+            "sections": len(sections),
+            "ocr_fallback": len(fallbacks),
+            "kb_absorbed": kb_stats.get("absorbed", 0),
+        },
         "target": str(target),
         "sections_target": str(sections_path),
     }

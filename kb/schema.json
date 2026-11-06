@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CaseCard",
+  "type": "object",
+  "required": [
+    "case_id",
+    "source_doc_hash",
+    "doc_type",
+    "kind",
+    "evidence",
+    "lesson",
+    "created_at"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "minLength": 8
+    },
+    "source_doc_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16,64}$"
+    },
+    "doc_type": {
+      "type": "string",
+      "enum": [
+        "service",
+        "goods",
+        "works",
+        "scan",
+        ""
+      ]
+    },
+    "page": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "section": {
+      "type": "string"
+    },
+    "requirement_id": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "gold_miss",
+        "false_positive",
+        "table_row",
+        "layout",
+        "ocr",
+        "rule_gap"
+      ]
+    },
+    "evidence": {
+      "type": "string",
+      "minLength": 4
+    },
+    "lesson": {
+      "type": "string",
+      "minLength": 4
+    },
+    "patch_candidate": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "gold",
+            "rule"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "approved",
+            "rejected"
+          ]
+        },
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "approved_by": {
+      "type": "string"
+    },
+    "linked_test": {
+      "type": "string"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# LAYER: load-bearing
 # -*- coding: utf-8 -*-
 """bid_chunker.py — 投标文件语义切块（PyMuPDF 主路径 / pdfplumber 兜底）
 
