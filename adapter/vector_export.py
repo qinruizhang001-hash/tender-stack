@@ -39,7 +39,15 @@ def _resolve_gold(source: Path) -> Path | None:
     return None
 
 
-def export_chunks(source: str | Path, target: str | Path, level: str = "requirement", absorb: bool | None = None) -> dict:
+def export_chunks(
+    source: str | Path,
+    target: str | Path,
+    level: str = "requirement",
+    absorb: bool | None = None,
+    gate_rows: list[dict] | None = None,
+    clarifications: list[dict] | None = None,
+    build_graph: bool | None = None,
+) -> dict:
     from bid_chunker import chunk_pdf
     from layout_parse import extract_requirements
 
@@ -111,6 +119,32 @@ def export_chunks(source: str | Path, target: str | Path, level: str = "requirem
     else:
         _write(sections_path, sections)
 
+    # 决策图：确定性构建，失败只记 fallback
+    graph_stats: dict = {"status": "skipped"}
+    want_graph = build_graph
+    if want_graph is None:
+        want_graph = (os.environ.get("TENDER_GRAPH") or "1").strip() not in {"0", "false", "no"}
+    try:
+        if not want_graph:
+            raise RuntimeError("graph_disabled")
+        import sys as _sys
+
+        _sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from decision_graph import build_from_export, load as load_graph, preserve_gate_edges, save as save_graph
+
+        graph = build_from_export(
+            requirements, sections, gate_rows=gate_rows, clarifications=clarifications, doc_hash=source_sha256
+        )
+        graph = preserve_gate_edges(load_graph(source_sha256), graph)
+        path = save_graph(graph)
+        if path is None:
+            graph_stats = {"status": "fallback: empty_doc_hash"}
+        else:
+            graph_stats = {"status": "ok", "path": str(path), "nodes": graph["counts"]["nodes"], "edges": graph["counts"]["edges"]}
+    except Exception as error:  # noqa: BLE001 - 图失败不影响导出
+        reason = "graph_disabled" if str(error) == "graph_disabled" else f"{type(error).__name__}: {error}"
+        graph_stats = {"status": f"fallback: {reason}"}
+
     # KB 吸收：默认开（TENDER_KB_ABSORB），失败只记 fallback，不影响导出
     kb_stats: dict = {}
     want_absorb = absorb
@@ -149,6 +183,9 @@ def export_chunks(source: str | Path, target: str | Path, level: str = "requirem
         "kb_absorbed_count": kb_stats.get("absorbed", 0),
         "kb_fallback": kb_stats.get("kb_fallback", ""),
         "kb_sealed": kb_stats.get("sealed", False),
+        "graph_build": graph_stats.get("status", ""),
+        "graph_nodes": graph_stats.get("nodes", 0),
+        "graph_edges": graph_stats.get("edges", 0),
         "layer_calls": {
             "text": sum(1 for row in requirements if row.get("kind") == "text"),
             "table_row": sum(1 for row in requirements if row.get("kind") == "table_row"),

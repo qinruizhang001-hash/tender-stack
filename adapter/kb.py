@@ -359,8 +359,12 @@ def promote(
             previous = baseline.get("sealed_recall")
             if previous is not None and recall < previous:
                 return {"ok": False, "stage": "sealed_regression", "errors": [f"sealed recall {recall} < {previous}"]}
-            baseline_path.parent.mkdir(parents=True, exist_ok=True)
-            baseline_path.write_text(json.dumps({"sealed_recall": recall, "updated_at": now()}, ensure_ascii=False, indent=2), encoding="utf-8")
+            if previous != recall:   # 数值没变就不写，避免仅时间戳的脏 diff
+                baseline_path.parent.mkdir(parents=True, exist_ok=True)
+                baseline_path.write_text(
+                    json.dumps({"sealed_recall": recall, "updated_at": now()}, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
 
     patch = card.get("patch_candidate") or {}
     target = Path(proposed_dir) / f"{card['case_id']}.json"
@@ -382,3 +386,14 @@ def context_for(rows: list[dict] | None = None, k: int = 3) -> dict:
     text = " ".join(str(row.get("requirement", ""))[:40] for row in (rows or [])[:3])
     keywords = re.findall(r"[\u4e00-\u9fff]{2,4}", text)[:5]
     return retrieve(keywords=keywords, k=k)
+
+def context(rows: list[dict] | None = None, doc_hash: str = "", keywords: list[str] | None = None, k: int = 3) -> dict:
+    """面板与 API 共用的只读查询入口：图 → 案例 → 空。"""
+    import re
+
+    from decision_graph import query_wiki_first
+
+    if keywords is None:
+        text = " ".join(str(row.get("requirement", ""))[:40] for row in (rows or [])[:3])
+        keywords = re.findall(r"[\u4e00-\u9fff]{2,4}", text)[:5]
+    return query_wiki_first(keywords=keywords or [], doc_hash=(doc_hash or "").strip(), k=k)

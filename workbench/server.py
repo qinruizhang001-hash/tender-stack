@@ -445,8 +445,8 @@ STAGE_DEFS = [
     ("audit", "审计补漏", "逐页问模型「还缺哪些条款」→ audit_candidates.json（第三通道）"),
     ("inject", "注入重提取", "带 known_issues 再提一次（可选）"),
     ("map", "台账化", "15 列 requirements.csv + provenance.jsonl"),
-    ("kb", "知识沉淀", "requirement 导出 → kb/inbox（失败不阻断审查）"),
     ("gate", "六阶段门禁", "G0–G3 分级 + 回写 status"),
+    ("kb", "知识沉淀", "requirement 导出 + 决策图（失败不阻断审查）"),
     ("validate", "逐列校验", "列结构 / 枚举 / quote 逐字回查"),
 ]
 
@@ -626,10 +626,12 @@ def _execute(job: dict) -> None:
                 )
 
             elif key == "kb":
+                gate_file = folder / "gated" / "requirements.graded.jsonl"
                 kb_result = run_command(
                     job,
                     stage,
-                    [PY, "scripts/kb_stage.py", "--pdf", file_path, "--out", str(folder / "kb")],
+                    [PY, "scripts/kb_stage.py", "--pdf", file_path, "--out", str(folder / "kb"),
+                     "--gate", str(gate_file) if gate_file.exists() else ""],
                     env,
                 )
                 # 知识沉淀失败只留痕，不把整单审查判失败
@@ -895,15 +897,38 @@ def api_bids(name: str):
     return {"bids": items}
 
 
-def kb_context(rows: list[dict] | None = None) -> dict:
-    """只读检索：失败一律返回空列表，不影响主流程。"""
+def resolve_doc_hash(name: str) -> str:
+    """从 kb 阶段的导出里取当前文档哈希；没有就返回空串（不猜）。"""
+    try:
+        path = OUT / name / "kb" / "requirements.jsonl"
+        if not path.exists():
+            return ""
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                return (json.loads(line).get("source_sha256") or "").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+    return ""
+
+
+def kb_context(rows: list[dict] | None = None, doc_hash: str = "") -> dict:
+    """只读检索：图 → 已确认案例 → 空；失败一律降级，不影响主流程。"""
     try:
         sys.path.insert(0, str(ROOT / "adapter"))
-        from kb import context_for
+        from kb import context as kb_lookup
 
-        return context_for(rows or [])
+        result = kb_lookup(rows or [], doc_hash=doc_hash)
+        return {
+            "items": result.get("items", []),
+            "graph_neighbors": result.get("graph_neighbors", []),
+            "fallback": "",
+            "source": result.get("source", "none"),
+            "allow_llm": result.get("allow_llm", True),
+            "no_graph_evidence": result.get("no_graph_evidence", True),
+        }
     except Exception as error:  # noqa: BLE001
-        return {"items": [], "fallback": f"{type(error).__name__}: {error}"}
+        return {"items": [], "graph_neighbors": [], "fallback": f"{type(error).__name__}: {error}",
+                "source": "none", "allow_llm": True, "no_graph_evidence": True}
 
 
 @app.get("/api/arms/{name}/match")
@@ -955,21 +980,45 @@ def api_match_result(name: str, slug: str = ""):
         "bid": state.get("bid") or (summary or {}).get("bid", ""),
         "slug": entry["slug"],
         "bids": [{"slug": item["slug"], "name": item["name"]} for item in dirs],
-        "kb_context": kb_context(rows),
+        "kb_context": kb_context(rows, resolve_doc_hash(name)),
     }
 
 
-@app.get("/api/kb/context")
-def api_kb_context(q: str = "", doc_type: str = "", k: int = 5):
-    """只读检索已确认案例（补偿层）。"""
+@app.get("/api/kb/graph")
+def api_kb_graph(doc_hash: str = "", node_id: str = "", requirement_id: str = "", q: str = ""):
+    """只读展开条款决策图：节点 + 一跳邻居 + 原文锚点 + 沉默≠接受摘要。"""
     try:
         sys.path.insert(0, str(ROOT / "adapter"))
-        from kb import retrieve
+        from decision_graph import find_node, load, neighbours, summary
+
+        graph = load(doc_hash) if doc_hash else None
+        if graph is None:
+            return {"source": "none", "node": None, "neighbours": [], "edges": [], "summary": None,
+                    "fallback": "graph_missing"}
+        if not node_id:
+            node = find_node(graph, requirement_id, [word for word in q.split() if word])
+            node_id = node["id"] if node else ""
+        payload = neighbours(graph, node_id) if node_id else {"node": None, "neighbours": [], "edges": [], "source": "graph"}
+        payload["summary"] = summary(graph)
+        payload.setdefault("fallback", "")
+        return payload
+    except Exception as error:  # noqa: BLE001
+        return {"source": "none", "node": None, "neighbours": [], "edges": [], "summary": None,
+                "fallback": f"{type(error).__name__}: {error}"}
+
+
+@app.get("/api/kb/context")
+def api_kb_context(q: str = "", doc_type: str = "", doc_hash: str = "", k: int = 5):
+    """只读检索：与面板同源（图 → 案例 → 空）。"""
+    try:
+        sys.path.insert(0, str(ROOT / "adapter"))
+        from kb import context as kb_lookup
 
         keywords = [word for word in q.replace(",", " ").split() if word]
-        return retrieve(doc_type, keywords, k)
+        return kb_lookup([], doc_hash=doc_hash, keywords=keywords, k=k)
     except Exception as error:  # noqa: BLE001
-        return {"items": [], "fallback": f"{type(error).__name__}: {error}"}
+        return {"items": [], "graph_neighbors": [], "fallback": f"{type(error).__name__}: {error}",
+                "source": "none", "allow_llm": True, "no_graph_evidence": True}
 
 
 @app.get("/api/arms/{name}/matrix")

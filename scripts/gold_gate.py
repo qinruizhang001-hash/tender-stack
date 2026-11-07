@@ -77,7 +77,7 @@ def _evaluate_doc(pdf: Path, gold: Path) -> dict:
 
     with tempfile.TemporaryDirectory() as folder:
         target = Path(folder) / "req.jsonl"
-        export = export_chunks(pdf, target, absorb=False)
+        export = export_chunks(pdf, target, absorb=False, build_graph=False)
         result = evaluate(gold, target)
     return {"export": export, "eval": result}
 

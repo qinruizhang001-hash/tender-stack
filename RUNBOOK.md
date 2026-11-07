@@ -786,3 +786,90 @@ sealing 按**内容哈希**生效，改路径/复制文件不解除。
 - RapidOCR 进程内单例（`_RAPID_ENGINE` + 锁），不再每页 `RapidOCR()`；
 - paddle probe 用 `errors="replace"`，消除线程 UTF-8 警告；
 - `kb_promote` 已移除 `--no-gate` 旗，跳过门禁只能靠 env（且非 CI）。
+
+## 22. R7：图接线与实图缺料
+
+### 22.1 doc_hash 贯穿
+
+`kb_context(rows, doc_hash)` 与 `/api/kb/context?doc_hash=` 都走 `kb.context()` →
+`decision_graph.query_wiki_first(doc_hash=…)`。没有 hash 时不读图，直接降级到 `kb.retrieve`。
+
+工作台的 hash 从 `out/<arm>/kb/requirements.jsonl` 的 `source_sha256` 解析；解析不到就返回空串。
+
+### 22.2 两条查询路径同源
+
+面板（match 的 `kb_context`）与 `/api/kb/context` 共用 `kb.context()`，响应字段：
+`source`（graph/kb/none）、`graph_neighbors`、`allow_llm`、`no_graph_evidence`、`fallback`。
+
+### 22.3 图吃 gate 行
+
+`kb` 阶段移到 `gate` 之后，`kb_stage --gate gated/requirements.graded.jsonl`：
+
+```
+通过/已响应 → pass；阻断/不通过 → fail；其余 → unknown
+```
+
+图里因此出现 `gate_result` 节点与 `reviewed_as` 边。
+
+### 22.4 最小 HITL 入口
+
+```bash
+python -m scripts.kb_clarify --doc-hash <hash> --requirement R-012 \
+    --status pending --note "待补社保凭证" --by 张三
+```
+
+- `--by` 必填；
+- 只写图，不改 gold / 台账；
+- `pending` 不会让结论变成 accepted（沉默≠接受）。
+
+## 23. R8：实图门禁边与仓库卫生
+
+### 23.1 图里必须有门禁边
+
+`kb` 阶段在 `gate` 之后执行，`kb_stage` 自动探测 `out/<arm>/gated/requirements.graded.jsonl`，
+把 ledger 的 `R-xxx` 按原文对齐到导出 requirement id，再 `decision_graph.apply_gate()`。
+
+验收（真跑后读磁盘 JSON）：
+
+```bash
+python -m scripts.kb_regraph --pdf 标书.pdf --out out/<arm>/kb \
+    --gate out/<arm>/gated/requirements.graded.jsonl
+```
+
+期望图内同时出现 `gate_result` 节点与 `reviewed_as` 边。
+
+### 23.2 给旧图补门禁边（不重解析）
+
+```bash
+python -m scripts.kb_regraph --doc-hash <hash> \
+    --requirements out/<arm>/kb/requirements.jsonl \
+    --gate out/<arm>/gated/requirements.graded.jsonl
+```
+
+### 23.3 baseline 不产生时间戳脏 diff
+
+`kb.promote` 只在 sealed recall **数值变化**时重写 `kb/sealed/baseline.json`；
+`gold_gate` 与 `kb_sealed --check` 只读不写。
+
+## 24. R9：无流水线产物的门禁重建与模糊对齐
+
+### 24.1 重建台账跑门禁（不伪造 pass）
+
+```bash
+python adapter/vector_export.py 标书.pdf out/req.jsonl
+python scripts/kb_gate_rebuild.py --requirements out/req.jsonl --out out/gate_rebuild
+```
+
+- 用导出结果重建 15 列台账（`line_no=0`），再跑真正的 `gate_engine`；
+- 因无行级 provenance，门禁判 `nr.no_line`，状态统一「需复核」；
+- `rebuild_meta.json` 记录来源与「不伪造 pass」。
+
+### 24.2 门禁 id 模糊对齐
+
+`kb_stage._gate_pairs` 现在三级匹配：包含 → 前 120 字 `difflib` 相似度 ≥0.72。
+怀柔命中从 45 条升到 78 条 `reviewed_as`。
+
+### 24.3 宁夏图
+
+`kb/graph/4eb0b7bd….json` 现含 `gate_result` 与 260 条 `reviewed_as`（全部 unknown，
+因为重建台账无行号）。这是「真实跑过门禁规则」的结果，不是编造的状态。

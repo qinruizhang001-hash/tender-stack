@@ -74,3 +74,26 @@
 | KB 吸收 | 承载层数据资产 | `TENDER_KB_ABSORB=1`（默认开） | 写 inbox 失败只记 `kb_fallback` |
 
 侧车永远不能成为唯一解析路径；任何侧车失败都必须回退到规则路径并留下 stats。
+
+### 3.6 条款决策图（承载旁路）
+
+`adapter/decision_graph.py`：从已导出的 requirement / section / gate 行**确定性**建图，
+存 `kb/graph/{doc_hash}.json`（schema_version=1）。图不参与判定，只做索引与检索。
+
+| 元素 | 规则 |
+|---|---|
+| 节点 `requirement` / `table_row` | 每个导出条目一个，锚点：doc_hash、page/pages、requirement_id、原文切片 |
+| 节点 `evidence_chunk` | 每个 section chunk 一个，锚点：chunk_id、pages |
+| 节点 `gate_result` | 仅当传入 gate 行时生成（status: pass/fail/unknown） |
+| 节点 `clarification` | 只能由人工/夹具写入，自动流程不生成 |
+| 边 `evidences` | requirement → 同 section 且页码相交的 chunk（最多 2 条） |
+| 边 `continues` | 跨页 requirement（pages≥2）→ 后续页的 chunk |
+| 边 `cites` | table_row → 同 section、页码差 ≤1 的条款（每行最多 1 条） |
+| 边 `reviewed_as` | requirement → gate_result / clarification |
+| 边 `supersedes` | 补遗：new → old（仅人工/夹具） |
+
+查询顺序固定在 `query_wiki_first()`：图邻居 → `kb.retrieve` → 空
+（`allow_llm=true` 仅作标记，API 不自动调用模型）。
+
+**沉默 ≠ 接受**：`decision_status()` 只有存在 `accepted` 澄清边才返回 accepted；
+否则 pending/unknown，`summary()` 不得输出「全部满足」。

@@ -22,3 +22,5 @@ data/
 # 由脚本生成的报告（template.html 保留，index.html 是产物）
 web/index.html
 .venv-paddle/
+# 决策图（生成物，可重建）
+kb/graph/*.json
