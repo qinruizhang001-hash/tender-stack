@@ -751,3 +751,38 @@ python -m scripts.kb_sealed --check   # 与基线比较，下降退出码 1
 ```
 
 `kb_promote --approve` 会先算 sealed recall，低于基线直接拒绝（`stage=sealed_regression`）。
+
+## 21. 工作台 KB 主路径（第六轮）
+
+### 21.1 流水线阶段
+
+`map` 之后新增 `kb` 阶段（`scripts/kb_stage.py`）：
+
+```bash
+python scripts/kb_stage.py --pdf 标书.pdf --out out/<arm>/kb
+```
+
+- 调用 `vector_export.export_chunks`（继承 `TENDER_KB_ABSORB`，默认 1）；
+- **失败不阻断审查**：阶段固定记 `code=0`，只把 `ok/fallback` 写进日志；
+- sealed 文档（内容哈希命中）吸收 0 条，`kb_sealed=true`。
+
+### 21.2 只读检索
+
+```bash
+curl "http://127.0.0.1:8330/api/kb/context?q=保证金&doc_type=service&k=3"
+```
+
+- `/api/arms/{name}/match` 响应新增 `kb_context` 字段（只读，不改台账/门禁）；
+- `TENDER_KB_RETRIEVE=0` 时返回 `{"items": [], "fallback": "disabled"}`；
+- 空库 / 索引缺失一律 200 + 空列表。
+
+### 21.3 sealed 覆盖
+
+`kb/sealed/index.json` 的 `doc_hashes` 现含怀柔 `1a4e42cf…` 与宁夏 `4eb0b7bd…`；
+sealing 按**内容哈希**生效，改路径/复制文件不解除。
+
+### 21.4 OCR 与 CLI
+
+- RapidOCR 进程内单例（`_RAPID_ENGINE` + 锁），不再每页 `RapidOCR()`；
+- paddle probe 用 `errors="replace"`，消除线程 UTF-8 警告；
+- `kb_promote` 已移除 `--no-gate` 旗，跳过门禁只能靠 env（且非 CI）。

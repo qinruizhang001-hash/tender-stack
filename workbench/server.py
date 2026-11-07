@@ -445,6 +445,7 @@ STAGE_DEFS = [
     ("audit", "审计补漏", "逐页问模型「还缺哪些条款」→ audit_candidates.json（第三通道）"),
     ("inject", "注入重提取", "带 known_issues 再提一次（可选）"),
     ("map", "台账化", "15 列 requirements.csv + provenance.jsonl"),
+    ("kb", "知识沉淀", "requirement 导出 → kb/inbox（失败不阻断审查）"),
     ("gate", "六阶段门禁", "G0–G3 分级 + 回写 status"),
     ("validate", "逐列校验", "列结构 / 枚举 / quote 逐字回查"),
 ]
@@ -623,6 +624,17 @@ def _execute(job: dict) -> None:
                     ],
                     env,
                 )
+
+            elif key == "kb":
+                kb_result = run_command(
+                    job,
+                    stage,
+                    [PY, "scripts/kb_stage.py", "--pdf", file_path, "--out", str(folder / "kb")],
+                    env,
+                )
+                # 知识沉淀失败只留痕，不把整单审查判失败
+                code = 0
+                push_line(job, stage, f"· kb stage exit={kb_result}")
 
             elif key == "gate":
                 code = run_command(
@@ -883,12 +895,24 @@ def api_bids(name: str):
     return {"bids": items}
 
 
+def kb_context(rows: list[dict] | None = None) -> dict:
+    """只读检索：失败一律返回空列表，不影响主流程。"""
+    try:
+        sys.path.insert(0, str(ROOT / "adapter"))
+        from kb import context_for
+
+        return context_for(rows or [])
+    except Exception as error:  # noqa: BLE001
+        return {"items": [], "fallback": f"{type(error).__name__}: {error}"}
+
+
 @app.get("/api/arms/{name}/match")
 def api_match_result(name: str, slug: str = ""):
     folder = arm_dir(name)
     dirs = match_dirs(name)
     if not dirs:
-        return {"state": {}, "summary": None, "rows": [], "has_result": False, "bid": "", "slug": "", "bids": []}
+        return {"state": {}, "summary": None, "rows": [], "has_result": False, "bid": "", "slug": "", "bids": [],
+                "kb_context": {"items": [], "fallback": ""}}
     entry = next((item for item in dirs if item["slug"] == slug), dirs[0]) if slug else dirs[0]
     out_dir = entry["dir"]
     summary = read_json(out_dir / "summary.json")
@@ -931,7 +955,21 @@ def api_match_result(name: str, slug: str = ""):
         "bid": state.get("bid") or (summary or {}).get("bid", ""),
         "slug": entry["slug"],
         "bids": [{"slug": item["slug"], "name": item["name"]} for item in dirs],
+        "kb_context": kb_context(rows),
     }
+
+
+@app.get("/api/kb/context")
+def api_kb_context(q: str = "", doc_type: str = "", k: int = 5):
+    """只读检索已确认案例（补偿层）。"""
+    try:
+        sys.path.insert(0, str(ROOT / "adapter"))
+        from kb import retrieve
+
+        keywords = [word for word in q.replace(",", " ").split() if word]
+        return retrieve(doc_type, keywords, k)
+    except Exception as error:  # noqa: BLE001
+        return {"items": [], "fallback": f"{type(error).__name__}: {error}"}
 
 
 @app.get("/api/arms/{name}/matrix")

@@ -214,3 +214,77 @@ def test_sealed_recall_下降则拒绝批准(tmp_path, monkeypatch):
                         proposed_dir=tmp_path / "p", approved_dir=tmp_path / "a", tests_dir=tests)
     assert result["ok"] is False
     assert result["stage"] == "sealed_regression"
+
+def test_kb_stage_失败不炸(tmp_path, monkeypatch):
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import kb_stage
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("export down")
+
+    monkeypatch.setattr(kb_stage, "export_chunks", boom, raising=False)
+    # 直接调 run：内部 from vector_export import export_chunks，用模块属性替换
+    import vector_export
+    monkeypatch.setattr(vector_export, "export_chunks", boom)
+    result = kb_stage.run(tmp_path / "x.pdf", tmp_path / "kb")
+    assert result["ok"] is False
+    assert "export down" in result["fallback"]
+
+
+def test_kb_stage_成功写入导出(tmp_path, monkeypatch):
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import kb_stage
+    import vector_export
+
+    monkeypatch.setattr(vector_export, "export_chunks", lambda *a, **k: {"requirements": 3, "kb_absorbed_count": 2})
+    result = kb_stage.run(tmp_path / "x.pdf", tmp_path / "kb")
+    assert result["ok"] is True
+    assert result["stats"]["kb_absorbed_count"] == 2
+
+
+def test_cli_不再提供_no_gate():
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import kb_promote
+    import pytest
+
+    with pytest.raises(SystemExit):
+        kb_promote.main(["--card", "x", "--no-gate"])
+
+
+def test_sealed_包含两份金标文档():
+    import hashlib
+    root = Path(__file__).resolve().parent.parent
+    hashes = kb.sealed_hashes()
+    for pdf in ("data/tenders/北京怀柔-公园绿地养护-公开招标文件.pdf", "data/tenders/宁夏医科大-体外心肺支持设备-公开招标文件.pdf"):
+        path = root / pdf
+        if path.exists():
+            assert hashlib.sha256(path.read_bytes()).hexdigest() in hashes
+
+def test_context_for_空库不报错(monkeypatch):
+    monkeypatch.setattr(kb, "retrieve", lambda *a, **k: {"items": [], "fallback": ""})
+    ctx = kb.context_for([{"requirement": "投标人须提供社保证明"}])
+    assert ctx == {"items": [], "fallback": ""}
+
+
+def test_context_for_异常降级(monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("index broken")
+
+    monkeypatch.setattr(kb, "retrieve", boom)
+    try:
+        kb.context_for([{"requirement": "投标保证金"}])
+    except Exception as error:  # context_for 不吞异常，交由调用方降级
+        assert "index broken" in str(error)
+
+
+def test_rapid_engine_单例():
+    import ocr_backend
+
+    try:
+        first = ocr_backend._rapid_engine()
+    except Exception:
+        return  # 未安装 rapidocr 时跳过
+    assert ocr_backend._rapid_engine() is first

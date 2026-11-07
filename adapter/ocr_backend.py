@@ -48,6 +48,7 @@ def _probe_paddle() -> bool:
             capture_output=True,
             text=True,
             encoding="utf-8",
+            errors="replace",
             timeout=120,
         )
     except Exception:  # noqa: BLE001
@@ -147,11 +148,24 @@ def warmup() -> bool:
         return False
 
 
-def _rapid(image_path: str) -> str:
-    from rapidocr_onnxruntime import RapidOCR
+_RAPID_ENGINE = None
+_RAPID_LOCK = threading.Lock()
 
-    engine = RapidOCR()
-    result, _ = engine(image_path)
+
+def _rapid_engine():
+    """进程内单例：RapidOCR 初始化要加载模型，不能每页新建。"""
+    global _RAPID_ENGINE
+    if _RAPID_ENGINE is None:
+        with _RAPID_LOCK:
+            if _RAPID_ENGINE is None:
+                from rapidocr_onnxruntime import RapidOCR
+
+                _RAPID_ENGINE = RapidOCR()
+    return _RAPID_ENGINE
+
+
+def _rapid(image_path: str) -> str:
+    result, _ = _rapid_engine()(image_path)
     return "\n".join(str(item[1]) for item in (result or []))
 
 

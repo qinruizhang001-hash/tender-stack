@@ -374,3 +374,11 @@ def promote(
         append_jsonl(Path(approved_dir) / "cases.jsonl", [stored])
         result["note"] = "只写 kb/approved 与 kb/proposed；gold 需人工合并进 contract/gold 并更新 index.json"
     return result
+
+def context_for(rows: list[dict] | None = None, k: int = 3) -> dict:
+    """从台账行里抽关键词，取相关历史案例（补偿层只读）。"""
+    import re
+
+    text = " ".join(str(row.get("requirement", ""))[:40] for row in (rows or [])[:3])
+    keywords = re.findall(r"[\u4e00-\u9fff]{2,4}", text)[:5]
+    return retrieve(keywords=keywords, k=k)

@@ -6,7 +6,7 @@
   python -m scripts.kb_promote --card <case_id> --approve --by 张三
   python -m scripts.kb_promote --card <case_id> --reject --reason "误报"
 
-规则：schema 校验 → linked_test 必须存在 → gold_gate（可 --no-gate 跳过）→
+规则：schema 校验 → linked_test 必须存在 → gold_gate（跳过只能靠 env，无 CLI 旗）→
 写 kb/proposed/；--approve 才写 kb/approved/ 与 contract/gold/absorbed/。
 """
 from __future__ import annotations
@@ -38,7 +38,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reason", default="")
     parser.add_argument("--by", default="")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--no-gate", action="store_true")
     args = parser.parse_args(argv)
 
     card_path = Path(args.card)
@@ -53,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         reject=args.reject,
         reason=args.reason,
         approved_by=args.by,
-        run_gate=not args.no_gate,
+        run_gate=True,  # 生产路径必须过 gold_gate；跳过只能走 TENDER_KB_ALLOW_NO_GATE=1（非 CI）
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result.get("ok") else 1
